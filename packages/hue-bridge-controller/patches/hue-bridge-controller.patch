@@ -1,0 +1,16 @@
+diff --git a/modules/widgets/dashboard/widgets/WidgetsTab.qml b/modules/widgets/dashboard/widgets/WidgetsTab.qml
+index 18082e7d..fb78e965 100644
+--- a/modules/widgets/dashboard/widgets/WidgetsTab.qml
++++ b/modules/widgets/dashboard/widgets/WidgetsTab.qml
+@@ -56,6 +56,11 @@ Rectangle {
+                         id: controlButtonsContainer
+                     }
+ 
++
++                    HueWidget {
++                        Layout.fillWidth: true
++                    }
++
+                     Calendar {
+                         Layout.fillWidth: true
+                         Layout.preferredHeight: width

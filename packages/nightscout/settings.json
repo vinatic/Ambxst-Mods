@@ -1,0 +1,48 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Axenide/Ambxst/dev/docs/mods/settings.schema.json",
+  "version": 1,
+  "fields": [
+    {
+      "key": "nightscoutURL",
+      "label": "Nightscout Url",
+      "description": "Url used to fetch cgm values",
+      "type": "string",
+      "default": "",
+      "restartRequired": false
+    },
+    {
+      "key": "apikey",
+      "label": "Nightscout Apikey",
+      "description": "Apikey used to fetch cgm values, only needs to have the role readonly",
+      "type": "string",
+      "default": "",
+      "restartRequired": false
+    },
+    {
+      "key": "mmol",
+      "label": "Cgm type",
+      "description": "On sets cgm to mmol/L, Off sets cgm to mg/dL",
+      "type": "boolean",
+      "default": true,
+      "restartRequired": false
+    },
+    {
+      "key": "warnOldCgmValue",
+      "label": "Warn about old cgm value",
+      "description": "Simply says old value if timer has passed",
+      "type": "boolean",
+      "default": true,
+      "restartRequired": false
+    },
+    {
+      "key": "oldValueTimer",
+      "label": "Timer on warning if enabled",
+      "description": "Default time it warns about is 20min",
+      "type": "integer",
+      "default": 20,
+      "minimum": 5,
+      "maximum": 30,
+      "restartRequired": false
+    }
+  ]
+}

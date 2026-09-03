@@ -1,0 +1,728 @@
+diff --git a/modules/services/BluetoothDevice.qml b/modules/services/BluetoothDevice.qml
+deleted file mode 100644
+index 8c8055b8..00000000
+--- a/modules/services/BluetoothDevice.qml
++++ /dev/null
+@@ -1,85 +0,0 @@
+-import QtQuick
+-import Quickshell
+-import Quickshell.Io
+-
+-QtObject {
+-    id: root
+-
+-    property string address: ""
+-    property string name: "Unknown"
+-    property string icon: "bluetooth"
+-    property bool paired: false
+-    property bool connected: false
+-    property bool trusted: false
+-    property int battery: -1
+-    property bool batteryAvailable: battery >= 0
+-    property bool connecting: false
+-
+-    signal infoUpdated()
+-
+-    // Connect (auto-trust new devices)
+-    function connect() {
+-        connecting = true;
+-        let p;
+-        if (!trusted) {
+-            // Trust first, then connect
+-            p = BluetoothService.runAsync(["bluetoothctl", "trust", address]).then(() => {
+-                return BluetoothService.runAsync(["bluetoothctl", "connect", address]);
+-            });
+-        } else {
+-            p = BluetoothService.connectDevice(address);
+-        }
+-
+-        return p.catch(e => {
+-            console.error(`Failed to connect to ${address}: ${e}`);
+-        }).finally(() => {
+-            connecting = false;
+-            updateInfo();
+-        });
+-    }
+-
+-    function updateInfo() {
+-        return BluetoothService.runAsync(["bluetoothctl", "info", address]).then(text => {
+-            Qt.callLater(() => {
+-                const lines = text.split("\n");
+-                for (const line of lines) {
+-                    const trimmed = line.trim();
+-                    if (trimmed.startsWith("Paired:")) {
+-                        root.paired = trimmed.includes("yes");
+-                    } else if (trimmed.startsWith("Connected:")) {
+-                        root.connected = trimmed.includes("yes");
+-                        if (root.connected) root.connecting = false;
+-                    } else if (trimmed.startsWith("Trusted:")) {
+-                        root.trusted = trimmed.includes("yes");
+-                    } else if (trimmed.startsWith("Icon:")) {
+-                        root.icon = trimmed.split(":")[1]?.trim() || "bluetooth";
+-                    } else if (trimmed.startsWith("Battery Percentage:")) {
+-                        const match = trimmed.match(/\((\d+)\)/);
+-                        if (match) {
+-                            root.battery = parseInt(match[1]) || -1;
+-                        }
+-                    }
+-                }
+-                root.infoUpdated();
+-            });
+-        }).catch(e => {
+-            console.error(`Failed to get info for ${address}: ${e}`);
+-        });
+-    }
+-
+-    function disconnect() {
+-        BluetoothService.disconnectDevice(address);
+-    }
+-
+-    function pair() {
+-        BluetoothService.pairDevice(address);
+-    }
+-
+-    function trust() {
+-        BluetoothService.trustDevice(address);
+-    }
+-
+-    function forget() {
+-        BluetoothService.removeDevice(address);
+-    }
+-}
+diff --git a/modules/services/BluetoothService.qml b/modules/services/BluetoothService.qml
+deleted file mode 100644
+index de25678a..00000000
+--- a/modules/services/BluetoothService.qml
++++ /dev/null
+@@ -1,383 +0,0 @@
+-pragma Singleton
+-pragma ComponentBehavior: Bound
+-
+-import QtQuick
+-import Quickshell
+-import Quickshell.Io
+-import qs.modules.globals
+-
+-Singleton {
+-    id: root
+-
+-    property bool enabled: false
+-    property bool discovering: false
+-    property bool connected: false
+-    property int connectedDevices: 0
+-    
+-    readonly property list<BluetoothDevice> devices: []
+-    
+-    // Cached sorted device list - only updates when devices change
+-    property list<var> friendlyDeviceList: []
+-    
+-    // Queue for batching updateInfo calls
+-    property var pendingInfoUpdates: []
+-    property bool isProcessingInfoQueue: false
+-    property bool isUpdating: false
+-    property bool wasEnabledBeforeSleep: false
+-
+-    property var suspendConnections: Connections {
+-        target: SuspendManager
+-        function onPreparingForSleep() {
+-            root.wasEnabledBeforeSleep = root.enabled;
+-            if (discovering) {
+-                root.stopDiscovery();
+-            }
+-            scanTimer.stop();
+-            infoQueueTimer.stop();
+-        }
+-        function onWakingUp() {
+-            // Re-sync status after wake
+-            wakeSyncTimer.restart();
+-
+-            // Restore state if it was enabled
+-            if (root.wasEnabledBeforeSleep) {
+-                root.setEnabled(true);
+-            }
+-        }
+-    }
+-
+-    property var wakeSyncTimer: Timer {
+-        id: wakeSyncTimer
+-        interval: 3000
+-        repeat: false
+-        onTriggered: {
+-            root.updateStatus();
+-            if (root.enabled) {
+-                root.updateDevices();
+-            }
+-        }
+-    }
+-
+-    function updateFriendlyList() {
+-        friendlyDeviceList = [...devices].sort((a, b) => {
+-            // Connected devices first
+-            if (a.connected && !b.connected) return -1;
+-            if (!a.connected && b.connected) return 1;
+-            // Then paired devices
+-            if (a.paired && !b.paired) return -1;
+-            if (!a.paired && b.paired) return 1;
+-            // Then by name
+-            return (a.name || "").localeCompare(b.name || "");
+-        });
+-    }
+-
+-    // Batch process info updates with delay between each
+-    function queueInfoUpdate(device: BluetoothDevice) {
+-        if (pendingInfoUpdates.indexOf(device) === -1) {
+-            pendingInfoUpdates.push(device);
+-        }
+-        if (!isProcessingInfoQueue) {
+-            processNextInfoUpdate();
+-        }
+-    }
+-
+-    function processNextInfoUpdate() {
+-        if (pendingInfoUpdates.length === 0) {
+-            isProcessingInfoQueue = false;
+-            updateFriendlyList();
+-            return;
+-        }
+-        
+-        isProcessingInfoQueue = true;
+-        const device = pendingInfoUpdates.shift();
+-        if (device) {
+-            device.updateInfo();
+-        }
+-        // Process next after a small delay
+-        infoQueueTimer.restart();
+-    }
+-
+-    Timer {
+-        id: infoQueueTimer
+-        interval: 50  // 50ms between each info request
+-        running: false
+-        repeat: false
+-        onTriggered: {
+-            if (!SuspendManager.isSuspending) {
+-                root.processNextInfoUpdate();
+-            }
+-        }
+-    }
+-
+-    Component {
+-        id: asyncProcessComp
+-        Process {
+-            id: internalProc
+-            property var resolve
+-            property var reject
+-            property string buffer: ""
+-            property string errorBuffer: ""
+-            
+-            stdout: SplitParser {
+-                onRead: data => internalProc.buffer += data + "\n"
+-            }
+-            
+-            stderr: SplitParser {
+-                onRead: data => internalProc.errorBuffer += data + "\n"
+-            }
+-            
+-            onExited: (exitCode, exitStatus) => {
+-                if (exitCode === 0) resolve(buffer.trim());
+-                else reject(errorBuffer.trim() || `Process exited with code ${exitCode}`);
+-                destroy();
+-            }
+-        }
+-    }
+-
+-    function runAsync(command, environment = {}) {
+-        return new Promise((resolve, reject) => {
+-            const proc = asyncProcessComp.createObject(root, {
+-                command: command,
+-                environment: environment,
+-                resolve: resolve,
+-                reject: reject
+-            });
+-            proc.running = true;
+-        });
+-    }
+-
+-    // Control functions
+-    function setEnabled(value: bool): void {
+-        if (SuspendManager.isSuspending) return;
+-        isUpdating = true;
+-        runAsync(["bluetoothctl", "power", value ? "on" : "off"]).then(() => {
+-            updateStatus();
+-            if (value) updateDevices();
+-            isUpdating = false;
+-        }).catch(e => {
+-            isUpdating = false;
+-        });
+-    }
+-
+-    function toggle(): void {
+-        setEnabled(!enabled);
+-    }
+-
+-    function startDiscovery(): void {
+-        if (enabled && !SuspendManager.isSuspending) {
+-            discovering = true;
+-            runAsync(["bluetoothctl", "scan", "on"]).then(() => {
+-                scanTimer.restart();
+-            }).catch(e => {
+-                discovering = false;
+-            });
+-        }
+-    }
+-
+-    function stopDiscovery(): void {
+-        discovering = false;
+-        runAsync(["bluetoothctl", "scan", "off"]).then(() => {
+-            scanTimer.stop();
+-        }).catch(e => {});
+-    }
+-
+-    function connectDevice(address: string): void {
+-        isUpdating = true;
+-        runAsync(["bluetoothctl", "connect", address]).then(() => {
+-            updateDevices();
+-            isUpdating = false;
+-        }).catch(e => {
+-            isUpdating = false;
+-        });
+-    }
+-
+-    function disconnectDevice(address: string): void {
+-        isUpdating = true;
+-        runAsync(["bluetoothctl", "disconnect", address]).then(() => {
+-            updateDevices();
+-            isUpdating = false;
+-        }).catch(e => {
+-            isUpdating = false;
+-        });
+-    }
+-
+-    function pairDevice(address: string): void {
+-        isUpdating = true;
+-        runAsync(["bluetoothctl", "pair", address]).then(() => {
+-            updateDevices();
+-            isUpdating = false;
+-        }).catch(e => {
+-            isUpdating = false;
+-        });
+-    }
+-
+-    function trustDevice(address: string): void {
+-        runAsync(["bluetoothctl", "trust", address]).catch(e => {});
+-    }
+-
+-    function removeDevice(address: string): void {
+-        isUpdating = true;
+-        runAsync(["bluetoothctl", "remove", address]).then(() => {
+-            updateDevices();
+-            isUpdating = false;
+-        }).catch(e => {
+-            isUpdating = false;
+-        });
+-    }
+-
+-    Timer {
+-        id: updateDebouncer
+-        interval: 200
+-        repeat: false
+-        onTriggered: root.performUpdate()
+-    }
+-
+-    function updateStatus() {
+-        updateDebouncer.restart();
+-    }
+-
+-    function performUpdate() {
+-        if (isUpdating) return;
+-        isUpdating = true;
+-        checkPowerProcess.running = true;
+-    }
+-
+-    // Timers
+-    Timer {
+-        id: updateTimer
+-        interval: 5000
+-        // Only poll when interface is visible
+-        running: root.enabled && !SuspendManager.isSuspending && (GlobalStates.dashboardOpen || GlobalStates.launcherOpen || GlobalStates.overviewOpen)
+-        repeat: true
+-        onTriggered: root.updateDevices()
+-    }
+-
+-    Timer {
+-        id: scanTimer
+-        interval: 15000
+-        running: false
+-        repeat: false
+-        onTriggered: root.stopDiscovery()
+-    }
+-
+-    // Processes
+-    Process {
+-        id: checkPowerProcess
+-        command: ["bash", "-c", "bluetoothctl show | grep 'Powered:' | awk '{print $2}'"]
+-        running: false
+-        stdout: SplitParser {
+-            onRead: (data) => {
+-                const output = data ? data.trim() : "";
+-                root.enabled = output === "yes";
+-                
+-                if (root.enabled) {
+-                    checkConnectedProcess.running = true;
+-                } else {
+-                    root.connected = false;
+-                    root.connectedDevices = 0;
+-                    root.discovering = false;
+-                    root.isUpdating = false;
+-                }
+-            }
+-        }
+-    }
+-
+-    Process {
+-        id: checkConnectedProcess
+-        command: ["bash", "-c", "bluetoothctl devices Connected | wc -l"]
+-        running: false
+-        stdout: SplitParser {
+-            onRead: (data) => {
+-                const output = data ? data.trim() : "0";
+-                root.connectedDevices = parseInt(output) || 0;
+-                root.connected = root.connectedDevices > 0;
+-                root.isUpdating = false;
+-            }
+-        }
+-    }
+-
+-    function updateDevices() {
+-        getDevicesProcess.running = true;
+-    }
+-
+-    Process {
+-        id: getDevicesProcess
+-        command: ["bash", "-c", "bluetoothctl devices"]
+-        running: false
+-        property string buffer: ""
+-        environment: ({
+-            LANG: "C.UTF-8",
+-            LC_ALL: "C.UTF-8"
+-        })
+-        stdout: SplitParser {
+-            onRead: data => {
+-                getDevicesProcess.buffer += data + "\n";
+-            }
+-        }
+-        onExited: (exitCode, exitStatus) => {
+-            const text = getDevicesProcess.buffer;
+-            getDevicesProcess.buffer = "";
+-            
+-            Qt.callLater(() => {
+-                const deviceLines = text.trim().split("\n").filter(l => l.startsWith("Device "));
+-                const deviceDataList = [];
+-                for (let i = 0; i < deviceLines.length; i++) {
+-                    const line = deviceLines[i];
+-                    const parts = line.split(" ");
+-                    if (parts.length < 2) continue;
+-                    deviceDataList.push({
+-                        address: parts[1],
+-                        name: parts.slice(2).join(" ") || "Unknown"
+-                    });
+-                }
+-
+-                const rDevices = root.devices;
+-                
+-                // 1. Remove gone devices
+-                for (let i = rDevices.length - 1; i >= 0; i--) {
+-                    const rd = rDevices[i];
+-                    if (!deviceDataList.find(d => d.address === rd.address)) {
+-                        rDevices.splice(i, 1);
+-                        rd.destroy();
+-                    }
+-                }
+-                
+-                // 2. Add or update devices
+-                for (let i = 0; i < deviceDataList.length; i++) {
+-                    const data = deviceDataList[i];
+-                    const existing = rDevices.find(d => d.address === data.address);
+-                    if (existing) {
+-                        if (existing.name !== data.name) {
+-                            existing.name = data.name;
+-                        }
+-                        root.queueInfoUpdate(existing);
+-                    } else {
+-                        const newDevice = deviceComp.createObject(root, {
+-                            address: data.address,
+-                            name: data.name
+-                        });
+-                        rDevices.push(newDevice);
+-                        root.queueInfoUpdate(newDevice);
+-                    }
+-                }
+-                
+-                if (deviceDataList.length === 0) {
+-                    root.updateFriendlyList();
+-                }
+-            });
+-        }
+-    }
+-
+-    Component {
+-        id: deviceComp
+-        BluetoothDevice {}
+-    }
+-
+-    property bool _initialized: false
+-
+-    function initialize() {
+-        if (_initialized) return;
+-        _initialized = true;
+-        updateStatus();
+-    }
+-}
+diff --git a/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml b/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
+index d35908ed..7ea388de 100644
+--- a/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
++++ b/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
+@@ -5,8 +5,9 @@ import QtQuick.Controls
+ import QtQuick.Layouts
+ import qs.modules.theme
+ import qs.modules.components
+-import qs.modules.services
++//import qs.modules.services
+ import qs.config
++import Quickshell.Bluetooth
+ 
+ Item {
+     id: root
+@@ -112,7 +113,7 @@ Item {
+                         }
+ 
+                         if (root.device?.batteryAvailable) {
+-                            status += ` - ${root.device.battery}%`;
++                            status += ` - ${root.device.battery * 100}%`;
+                         }
+ 
+                         return status;
+@@ -138,7 +139,7 @@ Item {
+ 
+                 Text {
+                     text: {
+-                        const battery = root.device?.battery ?? 0;
++                        const battery = root.device?.battery * 100 ?? 0;
+                         if (battery > 80)
+                             return Icons.batteryFull;
+                         if (battery > 60)
+@@ -152,7 +153,7 @@ Item {
+                     font.family: Icons.font
+                     font.pixelSize: 18
+                     color: {
+-                        const battery = root.device?.battery ?? 0;
++                        const battery = root.device?.battery * 100 ?? 0;
+                         if (battery > 60)
+                             return Colors.green;
+                         if (battery > 40)
+@@ -208,6 +209,37 @@ Item {
+                 Layout.fillWidth: true
+             }
+ 
++            // Connect/Disconnect button
++            Button {
++                id: trustButton
++                flat: true
++                implicitWidth: 32
++                implicitHeight: 32
++
++                background: StyledRect {
++                    variant: root.device?.trusted ? "primary" : "internalbg"
++                    radius: root.device?.trusted ? Styling.radius(4) : Styling.radius(0)
++                }
++
++                contentItem: Text {
++                    text: root.device?.trusted ? Icons.shieldCheck : Icons.shield
++                    textFormat: Text.RichText
++                    color: root.device?.trusted ? Styling.srItem("primary") : Colors.overSurfaceVariant
++                    font.pixelSize: 20
++                    font.family: Icons.font
++                    horizontalAlignment: Text.AlignHCenter
++                    verticalAlignment: Text.AlignVCenter
++                }
++
++                onClicked: {
++                    if (root.device?.trusted) {
++                        root.device.trusted = false;
++                    } else {
++                        root.device.trusted = true;
++                    }
++                }
++            }
++
+             // Connect/Disconnect button
+             Button {
+                 id: actionButton
+diff --git a/modules/widgets/dashboard/controls/BluetoothPanel.qml b/modules/widgets/dashboard/controls/BluetoothPanel.qml
+index 462f39f6..afc346cb 100644
+--- a/modules/widgets/dashboard/controls/BluetoothPanel.qml
++++ b/modules/widgets/dashboard/controls/BluetoothPanel.qml
+@@ -7,7 +7,8 @@ import Quickshell
+ import Quickshell.Io
+ import qs.modules.theme
+ import qs.modules.components
+-import qs.modules.services
++//import qs.modules.services
++import Quickshell.Bluetooth
+ import qs.config
+ 
+ Item {
+@@ -17,25 +18,6 @@ Item {
+     readonly property int contentWidth: Math.min(width, maxContentWidth)
+     readonly property real sideMargin: (width - contentWidth) / 2
+ 
+-    Component.onCompleted: {
+-        // Only refresh device list, don't start scanning automatically
+-        if (BluetoothService.enabled) {
+-            // Defer update to avoid blocking UI initialization
+-            initialUpdateTimer.start();
+-        }
+-    }
+-
+-    Timer {
+-        id: initialUpdateTimer
+-        interval: 300
+-        repeat: false
+-        onTriggered: BluetoothService.updateDevices()
+-    }
+-
+-    Component.onDestruction: {
+-        BluetoothService.stopDiscovery();
+-    }
+-
+     // Device list - fills entire width for scroll/drag
+     ListView {
+         id: deviceList
+@@ -45,7 +27,27 @@ Item {
+         cacheBuffer: 1000
+         reuseItems: true
+ 
+-        model: BluetoothService.friendlyDeviceList
++        model: {
++          if (!Bluetooth.defaultAdapter.enabled) return [];
++          var bluetoothDevices = Bluetooth.devices.values
++          var filteredDevices = []
++          for (var i = 0; i < Bluetooth.devices.values.length; i++) {
++              if (Bluetooth.devices.values[i].deviceName != "") {
++                  filteredDevices.push(bluetoothDevices[i])
++              }
++          }
++          filteredDevices.sort((a, b) => {
++              // Connected devices first
++              if (a.connected && !b.connected) return -1;
++              if (!a.connected && b.connected) return 1;
++              // Then paired devices
++              if (a.paired && !b.paired) return -1;
++              if (!a.paired && b.paired) return 1;
++              // Then by name
++              return (a.name || "").localeCompare(b.name || "");
++          });
++          return filteredDevices;
++        }
+ 
+         header: Item {
+             width: deviceList.width
+@@ -57,7 +59,7 @@ Item {
+                 anchors.horizontalCenter: parent.horizontalCenter
+                 title: "Bluetooth"
+                 showToggle: true
+-                toggleChecked: BluetoothService.enabled
++                toggleChecked: Bluetooth.defaultAdapter.enabled
+ 
+                 actions: [
+                     {
+@@ -70,19 +72,16 @@ Item {
+                     {
+                         icon: Icons.sync,
+                         tooltip: "Scan for devices",
+-                        enabled: BluetoothService.enabled,
+-                        loading: BluetoothService.discovering || BluetoothService.isUpdating,
++                        enabled: Bluetooth.defaultAdapter.enabled,
++                        loading: Bluetooth.defaultAdapter.discovering,
+                         onClicked: function () {
+-                            BluetoothService.startDiscovery();
++                            Bluetooth.defaultAdapter.discovering = !Bluetooth.defaultAdapter.discovering;
+                         }
+                     }
+                 ]
+ 
+                 onToggleChanged: checked => {
+-                    BluetoothService.setEnabled(checked);
+-                    if (checked) {
+-                        BluetoothService.startDiscovery();
+-                    }
++                    Bluetooth.defaultAdapter.enabled = checked
+                 }
+             }
+         }
+@@ -91,6 +90,7 @@ Item {
+             required property var modelData
+             width: deviceList.width
+             height: deviceItem.height
++            visible: modelData.deviceName != ""
+ 
+             BluetoothDeviceItem {
+                 id: deviceItem
+@@ -103,8 +103,8 @@ Item {
+         // Empty state
+         Text {
+             anchors.centerIn: parent
+-            visible: deviceList.count === 0 && !BluetoothService.discovering
+-            text: BluetoothService.enabled ? "No devices found" : "Bluetooth is disabled"
++            visible: deviceList.count === 0 && !Bluetooth.defaultAdapter.discovering
++            text: Bluetooth.defaultAdapter.enabled ? "No devices found" : "Bluetooth is disabled"
+             font.family: Config.theme.font
+             font.pixelSize: Config.theme.fontSize
+             color: Colors.overSurfaceVariant
+diff --git a/modules/widgets/dashboard/widgets/QuickControls.qml b/modules/widgets/dashboard/widgets/QuickControls.qml
+index bc4a6acc..01fba22a 100644
+--- a/modules/widgets/dashboard/widgets/QuickControls.qml
++++ b/modules/widgets/dashboard/widgets/QuickControls.qml
+@@ -5,6 +5,7 @@ import qs.modules.components
+ import qs.modules.services
+ import qs.config
+ import "../controls"
++import Quickshell.Bluetooth
+ 
+ StyledRect {
+     id: root
+@@ -19,8 +20,6 @@ StyledRect {
+     onVisibleChanged: {
+         if (!visible) {
+             root.expandedPanel = -1;
+-        } else {
+-            BluetoothService.initialize();
+         }
+     }
+     
+@@ -79,21 +78,17 @@ StyledRect {
+                     Layout.preferredWidth: 48
+                     Layout.preferredHeight: 48
+                     iconName: {
+-                        if (!BluetoothService.enabled)
++                        if (!Bluetooth.defaultAdapter.enabled)
+                             return Icons.bluetoothOff;
+-                        if (BluetoothService.connected)
+-                            return Icons.bluetoothConnected;
+                         return Icons.bluetooth;
+                     }
+-                    isActive: BluetoothService.enabled || root.expandedPanel === 1
++                    isActive: Bluetooth.defaultAdapter.enabled || root.expandedPanel === 1
+                     tooltipText: {
+-                        if (!BluetoothService.enabled)
++                        if (!Bluetooth.defaultAdapter.enabled)
+                             return "Bluetooth: Off";
+-                        if (BluetoothService.connected)
+-                            return "Bluetooth: Connected";
+                         return "Bluetooth: On";
+                     }
+-                    onClicked: BluetoothService.toggle()
++                    onClicked: Bluetooth.defaultAdapter.enabled = !Bluetooth.defaultAdapter.enabled
+                     onRightClicked: root.togglePanel(1)
+                     onLongPressed: root.togglePanel(1)
+                 }

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Axenide/Ambxst/dev/docs/mods/settings.schema.json",
+  "version": 1,
+  "fields": [
+    {
+      "key": "bridgeIP",
+      "label": "Hue Bridge IP",
+      "description": "IP used to connect the hue bridge",
+      "type": "string",
+      "default": "",
+      "restartRequired": false
+    },
+    {
+      "key": "api",
+      "label": "Hue Bridge Apikey",
+      "description": "Api used to connect the hue bridge",
+      "type": "string",
+      "default": "",
+      "restartRequired": false
+    }
+  ]
+}

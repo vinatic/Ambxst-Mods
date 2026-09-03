@@ -1,0 +1,36 @@
+diff --git a/modules/theme/Icons.qml b/modules/theme/Icons.qml
+index 9a266b2e..03565c72 100644
+--- a/modules/theme/Icons.qml
++++ b/modules/theme/Icons.qml
+@@ -223,11 +223,15 @@ QtObject {
+     readonly property string headphones: ""
+     readonly property string mouse: ""
+     readonly property string phone: ""
++    readonly property string mobilePhone: ""
+     readonly property string watch: ""
+     readonly property string gamepad: ""
+     readonly property string printer: ""
+     readonly property string camera: ""
+     readonly property string speaker: ""
++    readonly property string tablet: ""
++    readonly property string laptop: ""
++    readonly property string genericDevice: ""
+ 
+     readonly property string batteryFull: ""
+     readonly property string batteryHigh: ""
+diff --git a/modules/widgets/dashboard/widgets/WidgetsTab.qml b/modules/widgets/dashboard/widgets/WidgetsTab.qml
+index 18082e7d..7052d15a 100644
+--- a/modules/widgets/dashboard/widgets/WidgetsTab.qml
++++ b/modules/widgets/dashboard/widgets/WidgetsTab.qml
+@@ -56,6 +56,11 @@ Rectangle {
+                         id: controlButtonsContainer
+                     }
+ 
++
++                    BatteryWidget {
++                        Layout.fillWidth: true
++                    }
++
+                     Calendar {
+                         Layout.fillWidth: true
+                         Layout.preferredHeight: width

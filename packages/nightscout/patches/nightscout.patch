@@ -1,0 +1,51 @@
+diff --git a/modules/widgets/defaultview/CompactPlayer.qml b/modules/widgets/defaultview/CompactPlayer.qml
+index 265b87e8..93b25ef1 100644
+--- a/modules/widgets/defaultview/CompactPlayer.qml
++++ b/modules/widgets/defaultview/CompactPlayer.qml
+@@ -80,10 +80,11 @@ Item {
+     }
+ 
+     readonly property string displayedTitle: {
+-        if (player) {
+-            return (player.trackArtist ? player.trackArtist + " - " : "") + (player.trackTitle || "Unknown");
+-        }
+-        return focusedTitle || noMediaText;
++        //if (player) {
++        //    return (player.trackArtist ? player.trackArtist + " - " : "") + (player.trackTitle || "Unknown");
++        //}
++        return NightscoutService.widgetText
++        //return focusedTitle || noMediaText;
+     }
+ 
+     function getPlayerIcon(player) {
+@@ -135,7 +136,7 @@ Item {
+             width: parent.width - 32
+             text: compactPlayer.displayedTitle
+             font.family: Config.theme.font
+-            font.pixelSize: Styling.fontSize(0)
++            font.pixelSize: Styling.fontSize(2)
+             font.bold: true
+             color: Colors.overBackground
+             elide: Text.ElideRight
+@@ -143,6 +144,8 @@ Item {
+             opacity: (compactPlayer.notchHovered && compactPlayer.player) ? 0.0 : 1.0
+             horizontalAlignment: Text.AlignHCenter
+             z: 5
++            layer.enabled: true
++            layer.effect: BgShadow {}
+ 
+             Behavior on opacity {
+                 enabled: Config.animDuration > 0
+diff --git a/modules/widgets/defaultview/UserInfo.qml b/modules/widgets/defaultview/UserInfo.qml
+index 1cfad227..ed9945a9 100644
+--- a/modules/widgets/defaultview/UserInfo.qml
++++ b/modules/widgets/defaultview/UserInfo.qml
+@@ -71,7 +71,7 @@ Item {
+             Text {
+                 id: userHostText
+                 anchors.verticalCenter: parent.verticalCenter
+-                text: `${Quickshell.env("USER")}@${hostnameCollector.text.trim()}`
++                text: NightscoutService.widgetText
+                 color: userHostArea.pressed ? Colors.overBackground : (userHostArea.containsMouse ? Styling.srItem("overprimary") : Colors.overBackground)
+                 font.family: Config.theme.font
+                 font.pixelSize: Styling.fontSize(0)

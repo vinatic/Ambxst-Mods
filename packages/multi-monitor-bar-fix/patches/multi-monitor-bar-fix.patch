@@ -1,0 +1,98 @@
+diff --git a/modules/bar/BarContent.qml b/modules/bar/BarContent.qml
+index b9e57ca7..578b531b 100644
+--- a/modules/bar/BarContent.qml
++++ b/modules/bar/BarContent.qml
+@@ -4,6 +4,7 @@ import QtQuick.Layouts
+ import Quickshell
+ import Quickshell.Widgets
+ import Quickshell.Wayland
++import Quickshell.Hyprland
+ import qs.modules.bar.workspaces
+ import qs.modules.theme
+ import qs.modules.bar.clock
+@@ -37,16 +38,22 @@ Item {
+ 
+     property bool pinned: (Config.bar && Config.bar.pinnedOnStartup !== undefined ? Config.bar.pinnedOnStartup : true)
+ 
+-    // Monitor reference and reference to toplevels on monitor
+     readonly property var compositorMonitor: AxctlService.monitorFor(screen)
+-    readonly property var toplevels: (!compositorMonitor || !compositorMonitor.activeWorkspace || !AxctlService.clients.values) ? [] : AxctlService.clients.values.filter(c => c.workspace.id === compositorMonitor.activeWorkspace.id)
++    readonly property var hyprlandMonitor: Hyprland.monitorFor(screen)
++    readonly property var toplevels: hyprlandMonitor.activeWorkspace.toplevels.values
+ 
+-    // Fullscreen detection - use ToplevelManager (native Wayland) for reliable detection
++    // Fullscreen detection - check if a toplevel is fullscreen on this screen
+     readonly property bool activeWindowFullscreen: {
+-        const toplevel = ToplevelManager.activeToplevel;
+-        if (!toplevel || !toplevel.activated)
+-            return false;
+-        return toplevel.fullscreen === true;
++        if (!hyprlandMonitor || !toplevels) return false;
++
++        // Check all toplevels on active workspcace
++        for (var i = 0; i < toplevels.length; i++) {
++            // Checks first if the wayland handle is ready
++            if (toplevels[i].wayland && toplevels[i].wayland.fullscreen == true) {
++               return true;
++            }
++        }
++        return false;
+     }
+ 
+ 
+diff --git a/modules/shell/UnifiedShellPanel.qml b/modules/shell/UnifiedShellPanel.qml
+index 028c2dce..5cdc2557 100644
+--- a/modules/shell/UnifiedShellPanel.qml
++++ b/modules/shell/UnifiedShellPanel.qml
+@@ -2,6 +2,7 @@ import QtQuick
+ import QtQuick.Effects
+ import Quickshell
+ import Quickshell.Wayland
++import Quickshell.Hyprland
+ import qs.modules.bar
+ import qs.modules.bar.workspaces
+ import qs.modules.notch
+@@ -40,7 +41,7 @@ PanelWindow {
+         return WlrKeyboardFocus.None;
+     }
+     WlrLayershell.namespace: "ambxst"
+-    WlrLayershell.layer: WlrLayer.Overlay
++    WlrLayershell.layer: WlrLayer.top
+     exclusionMode: ExclusionMode.Ignore
+ 
+     // Whether we need to capture full-screen input for click-outside detection.
+@@ -89,24 +90,17 @@ PanelWindow {
+     readonly property bool unifiedEffectActive: false // Flag to notify children to disable internal borders
+ 
+     readonly property var compositorMonitor: AxctlService.monitorFor(targetScreen)
++    readonly property var hyprlandMonitor: Hyprland.monitorFor(targetScreen)
++    readonly property var toplevels: hyprlandMonitor.activeWorkspace.toplevels.values
+     readonly property bool hasFullscreenWindow: {
+-        if (!compositorMonitor)
+-            return false;
+-
+-        const activeWorkspaceId = compositorMonitor.activeWorkspace.id;
+-        const monId = compositorMonitor.id;
+-
+-        // Check active toplevel first (fast path)
+-        const toplevel = ToplevelManager.activeToplevel;
+-        if (toplevel && toplevel.fullscreen && AxctlService.focusedMonitor.id === monId) {
+-            return true;
+-        }
+-
+-        // Check all windows on this monitor (robust path)
+-        const wins = CompositorData.windowList;
+-        for (let i = 0; i < wins.length; i++) {
+-            if (wins[i].monitor === monId && wins[i].fullscreen && wins[i].workspace.id === activeWorkspaceId) {
+-                return true;
++        //if (!compositorMonitor)
++        //    return false;
++
++        if (!hyprlandMonitor || !toplevels) return false;
++        for (var i = 0; i < toplevels.length; i++) {
++            // Checks first if the wayland handle is ready
++            if (toplevels[i].wayland && toplevels[i].wayland.fullscreen == true) {
++               return true;
+             }
+         }
+         return false;

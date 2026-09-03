@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Axenide/Ambxst/dev/docs/mods/manifest.schema.json",
+  "manifestVersion": 1,
+  "id": "vinatic.battery-dashboard-widget",
+  "name": "Battery Dashboard Widget",
+  "version": "1.0.0",
+  "description": "Displays a battery widget on the Dashboard.",
+  "license": "AGPL-3.0-only",
+  "author": "vinatic",
+  "authorUrl": "https://github.com/vinatic",
+  "homepage": "https://github.com/vinatic/Ambxst-Mods/tree/main/packages/battery-dashboard-widget",
+  "compatibility": {
+    "api": 1,
+    "ambxst": ">=1.2.5 <1.3.0",
+    "testedBaseCommits": [
+      "287573bf9e5f3ed4ac40f5ead8b5879b595c5577"
+    ]
+  },
+  "permissions": [
+    "Reads battery levels of devices connected to pc"
+  ],
+  "operations": [
+    {
+      "type": "overlay",
+      "source": "payload/BatteryWidget.qml",
+      "target": "modules/widgets/dashboard/widgets/BatteryWidget.qml"
+    },
+    {
+      "type": "patch",
+      "source": "patches/battery-dashboard-widget.patch"
+    }
+  ]
+}
