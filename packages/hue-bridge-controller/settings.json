@@ -17,6 +17,14 @@
       "type": "string",
       "default": "",
       "restartRequired": false
+    },
+    {
+      "key": "autoColor",
+      "label": "Auto sync color with wallpaper/theme",
+      "description": "Hue lights will change color to match ambxst color theme. Affects all lights connected to bridge",
+      "type": "boolean",
+      "default": false,
+      "restartRequired": false
     }
   ]
 }

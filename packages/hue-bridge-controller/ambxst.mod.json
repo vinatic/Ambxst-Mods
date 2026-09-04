@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "vinatic.hue-bridge-controller",
   "name": "Hue Bridge Controller",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Simple phillips hue bridge controller",
   "license": "AGPL-3.0-only",
   "author": "vinatic",

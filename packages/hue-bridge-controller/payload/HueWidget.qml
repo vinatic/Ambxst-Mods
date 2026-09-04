@@ -8,25 +8,26 @@ import qs.config
 StyledRect {
     id: huePane
     variant: "pane"
+
+    property var lightIDs: HueService.lights != null ? Object.keys(HueService.lights) : []
+
     Layout.fillWidth: true
-    Layout.preferredHeight: 88
+    Layout.preferredHeight: 88 * lightIDs.length
     radius: Styling.radius(4)
 
-    property bool isPowered: HueService.on
-    property var lights: HueService.lights
-
-    RowLayout {
+    ColumnLayout {
         anchors.fill: parent
         anchors.margins: 4
         spacing: 4
 
         Repeater {
-            model: lights
+            model: lightIDs
             RowLayout {
                 id: lightList
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignTop
                 required property var modelData
+                property var light: HueService.lights[modelData]
 
                 StyledRect {
                     id: lightSelect
@@ -46,7 +47,7 @@ StyledRect {
                             Layout.preferredWidth: parent.width
                             Text {
                                 Layout.alignment: Qt.AlignLeft
-                                text: modelData.name //HueService.lights[modelData].name
+                                text: light.name
                                 font.family: Config.defaultFont
                                 font.pixelSize: 20
                                 font.weight: Font.Bold
@@ -109,27 +110,27 @@ StyledRect {
                                     anchors.margins: 0
                                     vertical: false
                                     smoothDrag: true
-                                    value: HueService.bri/255
+                                    value: light.bri/255
                                     resizeParent: false
-                                    wavy: HueService.on
-                                    wavyAmplitude: HueService.on ? 1.5 * value : 0
-                                    wavyFrequency: HueService.on ? 8.0 * value : 0
+                                    wavy: light.on
+                                    wavyAmplitude: light.on ? 1.5 * value : 0
+                                    wavyFrequency: light.on ? 8.0 * value : 0
                                     scroll: false
                                     iconClickable: false
                                     sliderVisible: true
                                     iconPos: "start"
                                     icon: ""
-                                    progressColor: HueService.on ? Styling.srItem("overprimary") : Styling.srItem("focus")
+                                    progressColor: light.on ? Styling.srItem("overprimary") : Styling.srItem("focus")
 
                                     property real brightnessValue: 0
 
                                     Component.onCompleted: {
-                                        brightnessValue = HueService.bri/255;
+                                        brightnessValue = light.bri/255;
                                     }
 
                                     onValueChanged: {
                                         brightnessValue = value;
-                                        HueService.setBrightness(Math.round(value*255));
+                                        HueService.setBrightness(light.id, Math.round(value*255));
                                     }
                                 }
                             }
@@ -141,20 +142,20 @@ StyledRect {
                                 Layout.preferredWidth: 32
                                 Layout.preferredHeight: 32
                                 variant: {
-                                    if (isPowered && huePowerHover)
+                                    if (light.on && huePowerHover)
                                         return "primaryfocus";
-                                    if (isPowered)
+                                    if (light.on)
                                         return "primary";
                                     if (huePowerHover)
                                         return "focus";
                                     return "pane";
                                 }
-                                radius: isPowered ? Styling.radius(4) : Styling.radius(0)
+                                radius: light.on ? Styling.radius(4) : Styling.radius(0)
 
                                 Text {
                                     id: huePowerBtn
                                     anchors.centerIn: parent
-                                    text: isPowered ? Icons.sun : Icons.sunDim
+                                    text: light.on ? Icons.sun : Icons.sunDim
                                     textFormat: Text.RichText
                                     color: huePowerButton.item
                                     font.pixelSize: 20
@@ -168,7 +169,10 @@ StyledRect {
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: HueService.togglePower()
+                                    onClicked: {
+                                        HueService.togglePower(light.id)
+                                        light.on = !light.on
+                                    }
                                 }
                             }
                         }
@@ -177,7 +181,9 @@ StyledRect {
             }
         }
     }
-    Component.onCompleted: {
-        HueService.widgetHelper()
+    onVisibleChanged: {
+        if (visible) {
+            HueService.getLightsHelper()
+        }
     }
 }
