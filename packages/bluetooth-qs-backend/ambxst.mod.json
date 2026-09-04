@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "vinatic.bluetooth-qs-backend",
   "name": "Bluetooth Backend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Changes the bluetooth backend from bluetoothctl to quickshell bluetooth",
   "license": "AGPL-3.0-only",
   "author": "vinatic",
