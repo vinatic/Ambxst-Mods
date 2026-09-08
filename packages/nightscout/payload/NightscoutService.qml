@@ -18,15 +18,7 @@ Singleton {
     property string mmol: "mmol/L"
     property bool warnOldCgmValue: true
     property int oldValueTimer: 20
-    property var newestCgm: ({
-                               "available": false,
-                               "loading": true,
-                               "sgv_mg": 0,
-                               "sgv_mmol": 0,
-                               "date": 0,
-                               "dateString": "",
-                               "direction": "Flat"
-                           })
+
     property var nightscoutData: null
     property string entriesCount: "100"
 
@@ -58,10 +50,7 @@ Singleton {
         if (root.retryAttempts < root.maxRetryAttempts) {
             retryTimer.start()
           } else {
-            if (!root.newestCgm.available) {
-                root.newestCgm.loading = false
-            }
-            console.info("Nightscout Connection:", connectionError)
+            console.log("Nightscout Connection:", connectionError)
             connectionError = true
             cgmTextMaker()
             const backoffDelay = Math.min(60000 * Math.pow(2, persistentRetryCount), 300000)
@@ -72,7 +61,6 @@ Singleton {
     }
 
     function getNightscoutApiUrl() {
-      // TODO: add password
       if (!root.nightscoutURL) {
         return null
       }
@@ -105,7 +93,6 @@ Singleton {
         }
 
         root.lastFetchTime = now
-        root.newestCgm.loading = true
         nightscoutFetcher.command = ['curl', apiUrl]
         nightscoutFetcher.running = true
     }
@@ -141,17 +128,16 @@ Singleton {
     }
 
     function cgmTextMaker() {
-      //console.info("NightscoutService: ")
-      if (!mmol) {
-        widgetText = "Service Error"
-      } else if (connectionError) {
+      if (connectionError) {
         widgetText = "Connection Error"
-      } else if (((Date.now()) - (newestCgm.date + oldValueTimer * 1000)) < 0 && warnOldCgmValue) { //older than 20 min
+      } else if (nightscoutData === null || nightscoutData.length === 0) {
+        widgetText = "No data Error"
+      } else if (nightscoutData[0].date + oldValueTimer * 60 * 1000 - Date.now() < 0 && warnOldCgmValue) { //older than 20 min
         widgetText = "Old value"
       } else if (mmol == "mmol/L") {
-        widgetText = newestCgm.sgv_mmol + "mmol/L " + dirSymbol(NightscoutService.newestCgm.direction)
+        widgetText = nightscoutData[0].sgv_mmol + "mmol/L " + dirSymbol(nightscoutData[0].direction)
       } else if (mmol == "mg/dL") {
-        widgetText = newestCgm.sgv_mg + "mg/dL " + dirSymbol(NightscoutService.newestCgm.direction)
+        widgetText = nightscoutData[0].sgv_mg + "mg/dL " + dirSymbol(nightscoutData[0].direction)
       } else {
         widgetText = "new error"
       }
@@ -164,7 +150,7 @@ Singleton {
             onStreamFinished: {
                 const raw = text.trim()
                 if (!raw || raw[0] !== "[") {
-                    console.info("Nightscout Error: Failed to fetch")
+                    console.log("Nightscout Error: Failed to fetch")
                     root.handleNightscoutFailure()
                     return
                 }
@@ -189,21 +175,10 @@ Singleton {
                         }
                     }
 
-                    root.newestCgm = {
-                        "available": true,
-                        "loading": false,
-                        "sgv_mg": data[0].sgv,
-                        "sgv_mmol": formatSgv(data[0].sgv),
-                        "date": data[0].date,
-                        "dateString": data[0].dateString,
-                        "direction": data[0].direction
-                    }
-
                     root.nightscoutData = cgm_list
-                    root.cgmTextMaker()
                     root.handleNightscoutSuccess()
                 } catch (e) {
-                    console.info("Nightscout Error:",e)
+                    console.log("Nightscout Error:",e)
                     root.handleNightscoutFailure(e)
                 }
             }
@@ -242,9 +217,6 @@ Singleton {
         running: false
         repeat: false
         onTriggered: {
-            if (!root.newestCgm.available) {
-                root.newestCgm.loading = true
-            }
             root.fetchNightscout()
         }
     }
@@ -285,7 +257,7 @@ Singleton {
         oldValueTimer = values["oldValueTimer"]
         fetchNightscout()
         updateTimer.start()
-        console.info("Nightscout:", "Nightscout Service initiated")
+        console.log("Nightscout:", "Nightscout Service initiated")
     }
 
     Connections {
