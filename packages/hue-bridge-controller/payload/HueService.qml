@@ -160,11 +160,10 @@ Singleton {
         let cx = (X / (X + Y + Z)).toFixed(4)
         let cy = (Y / (X + Y + Z)).toFixed(4)
         var param = "'"+'{"xy":['+cx+','+cy+"]}'"
+        let ids = lights != null ? Object.keys(lights) : {}
 
-        for (let i = 0; i < groups.length; i++) {
-            let request = "curl "+"-X "+"PUT "+"-d "+param+" "+bridgeIP+"/api/"+api+"/groups/"+groups[i].id+"/action";
-            setHueCommand.command = ["bash", "-c", request]
-            setHueCommand.running = true
+        for (let i = 0; i < ids.length; i++) {
+            hueRunCommandHelper(ids[i], param)
         }
     }
 
@@ -179,7 +178,7 @@ Singleton {
             applyColorHelper()
         } else {
             getLightsHelper()
-            getGroupsHelper()
+            //getGroupsHelper()
         }
     }
 
@@ -188,7 +187,7 @@ Singleton {
         api = values["api"].trim()
         autoColor = values["autoColor"]
         getLightsHelper()
-        getGroupsHelper()
+        //getGroupsHelper()
     }
 
     Connections {
