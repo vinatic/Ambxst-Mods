@@ -25,6 +25,14 @@
       "type": "boolean",
       "default": false,
       "restartRequired": false
+    },
+    {
+      "key": "updateOnRelease",
+      "label": "Enable value change on release when using slider",
+      "description": "Incase it gets buggy",
+      "type": "boolean",
+      "default": false,
+      "restartRequired": false
     }
   ]
 }

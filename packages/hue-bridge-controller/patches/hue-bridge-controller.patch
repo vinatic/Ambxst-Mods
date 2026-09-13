@@ -1,3 +1,67 @@
+diff --git a/modules/widgets/dashboard/Dashboard.qml b/modules/widgets/dashboard/Dashboard.qml
+index 6b60935c..17a6c022 100644
+--- a/modules/widgets/dashboard/Dashboard.qml
++++ b/modules/widgets/dashboard/Dashboard.qml
+@@ -11,6 +11,7 @@ import qs.modules.widgets.dashboard.widgets
+ import qs.modules.widgets.dashboard.controls
+ import qs.modules.widgets.dashboard.wallpapers
+ import qs.modules.widgets.dashboard.metrics
++import qs.modules.widgets.dashboard.hue
+ import qs.config
+ 
+ NotchAnimationBehavior {
+@@ -23,7 +24,7 @@ NotchAnimationBehavior {
+         property int currentTab: GlobalStates.dashboardCurrentTab
+     }
+ 
+-    readonly property var tabModel: [Icons.widgets, Icons.wallpapers, Icons.heartbeat]
++    readonly property var tabModel: [Icons.widgets, Icons.wallpapers, Icons.heartbeat, Icons.sun]
+     readonly property int tabCount: tabModel.length
+     readonly property int tabSpacing: 8
+ 
+@@ -200,7 +201,7 @@ NotchAnimationBehavior {
+ 
+                 // Calcular posición Y para un índice dado
+                 function getYForIndex(idx) {
+-                    if (idx <= 2) {
++                    if (idx <= root.tabCount) {
+                         return idx * (width + root.tabSpacing);
+                     } else {
+                         // Controls button at the bottom
+@@ -461,13 +462,21 @@ NotchAnimationBehavior {
+                     sourceComponent: metricsComponent
+                     z: visible ? 1 : 0
+                 }
+-                
++
++                // Tab 3: Hue
++                TabLoader {
++                    property int index: 3
++                    sourceComponent: hueComponent
++                    z: visible ? 1 : 0
++                }
++
+                 // Helper to access current item for focus
+                 property var currentItem: {
+                     switch(root.state.currentTab) {
+                         case 0: return children[0].item;
+                         case 1: return children[1].item;
+                         case 2: return children[2].item;
++                        case 3: return children[3].item;
+                         default: return null;
+                     }
+                 }
+@@ -593,4 +602,10 @@ NotchAnimationBehavior {
+         id: wallpapersComponent
+         WallpapersTab {}
+     }
++
++    Component {
++        id: hueComponent
++        HueTab {}
++    }
++
+ }
 diff --git a/modules/widgets/dashboard/widgets/WidgetsTab.qml b/modules/widgets/dashboard/widgets/WidgetsTab.qml
 index 18082e7d..fb78e965 100644
 --- a/modules/widgets/dashboard/widgets/WidgetsTab.qml

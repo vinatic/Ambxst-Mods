@@ -15,17 +15,26 @@ Singleton {
 
     property bool toggleRunning: false
     property int toggleLightID: 0
+    property bool toggleGroupRunning: false
+    property int toggleGroupID: 0
 
     property bool autoColor: false
     property var lights: null
     property var groups: null
 
-    property color hueColor: Colors.sourceColor // change to Colors.primary if sourceColor is too intense
+    property bool updateOnRelease: false
+
+    property color autoHueColor: Colors.sourceColor // change to Colors.primary if sourceColor is too intense
+    property color hueColor: getColor() //Does not get color from hue bridge yet
+
+    onAutoHueColorChanged: {
+      if (autoColor) {
+        root.hueColor = autoHueColor
+      }
+    }
 
     onHueColorChanged: {
-        if (autoColor) {
-            applyColorHelper();
-        }
+        applyColorHelper();
     }
 
     Process {
@@ -64,10 +73,26 @@ Singleton {
           // console.log("Hue Service: started collecting. Now the Power is: "+root.lightData.on+", Now the Brightness is: "+root.lightData.bri)
           console.log("Hue Service: finished collecting. Power is: "+data.state.on+", Brightness is: "+data.state.bri)
           if (toggleRunning) {
-            console.log("Hue Service: on is being set to: "+!data.state.on)
+            console.log("Hue Service: Light "+toggleLightID+" is being set to: "+!data.state.on)
             setPower(toggleLightID, !data.state.on)
             toggleRunning = false
             toggleLightID = 0
+          }
+        }
+      }
+    }
+
+    Process {
+      id: getGroupData
+      running: false
+      stdout: StdioCollector {
+        onStreamFinished: {
+          const data = JSON.parse(text.trim())
+          if (toggleGroupRunning) {
+            console.log("Hue Service: Group "+toggleGroupID+" is being set to: "+!data.state.any_on)
+            setGroupPower(toggleGroupID, !data.state.any_on)
+            toggleGroupRunning = false
+            toggleGroupID = 0
           }
         }
       }
@@ -81,10 +106,11 @@ Singleton {
         onStreamFinished: {
           const data = JSON.parse(text)
           let ids = Object.keys(data)
-          let groups_list = []
+          let groups_list = {}
           for (let i = 0; i < ids.length; i++) {
-            groups_list.push({
+            groups_list[ids[i]] = {
                         "id": ids[i],
+                        "lights": data[ids[i]].lights,
                         "name": data[ids[i]].name,
                         "on": data[ids[i]].action.on,
                         "all_on": data[ids[i]].state.all_on,
@@ -94,7 +120,7 @@ Singleton {
                         "sat": data[ids[i]].action.sat,
                         "effect": data[ids[i]].action.effect,
                         "xy": data[ids[i]].action.xy
-                      })
+                      }
                     }
           root.groups = groups_list
         }
@@ -104,6 +130,11 @@ Singleton {
     function getLightDataHelper(id) {
       getLightData.command = ["sh", "-c", "curl "+bridgeIP+"/api/"+api+"/lights/"+id]
       getLightData.running = true
+    }
+
+    function getGroupDataHelper(id) {
+      getGroupData.command = ["sh", "-c", "curl "+bridgeIP+"/api/"+api+"/groups/"+id]
+      getGroupData.running = true
     }
 
     function getLightsHelper() {
@@ -129,9 +160,28 @@ Singleton {
       setHueCommand.running = true
     }
 
+    function hueGroupRunCommandHelper(id, param) {
+      let request = "curl "+"-X "+"PUT "+"-d "+param+" "+bridgeIP+"/api/"+api+"/groups/"+id+"/action";
+      setHueCommand.command = ["bash", "-c", request]
+      //console.log(setHueCommand.command)
+      setHueCommand.running = true
+    }
+
     function setBrightness(id, value) {
       let param = "'{"+'"bri": '+value+"}'";
       hueRunCommandHelper(id, param);
+    }
+
+    function setGroupBrightness(id, value) {
+      let param = "'{"+'"bri": '+value+"}'";
+      hueGroupRunCommandHelper(id, param);
+      root.groups[id].bri = value
+    }
+
+    function toggleGroupPower(id) {
+      toggleGroupID = id
+      toggleGroupRunning = true
+      getGroupDataHelper(id);
     }
 
     function togglePower(id) {
@@ -143,8 +193,32 @@ Singleton {
     function setPower(id, value) {
       let param = "'{"+'"on": '+value+"}'";
       hueRunCommandHelper(id, param);
-      root.lights[id] = Object.assign({}, root.lights[id], { "on": value })
+      updateLightOn(id, value)
+    }
+
+    function setGroupPower(id, value) {
+      let param = "'{"+'"on": '+value+"}'";
+      hueGroupRunCommandHelper(id, param);
+      root.groups[id] = Object.assign({}, root.groups[id], {"any_on": value})
+      root.groups = Object.assign({}, root.groups) // Forces the update to widget
+      for (let i=0; i<groups[id].lights.length; i++) {
+        updateLightOn(root.groups[id].lights[i], value)
+      }
+    }
+
+    function updateLightOn(id, value) {
+      root.lights[id] = Object.assign({}, root.lights[id], { "on" : value })
       root.lights = Object.assign({}, root.lights) // Forces the update to widget
+    }
+
+    function updateLightBri(id, value) {
+      root.lights[id] = Object.assign({}, root.lights[id], { "bri" : value })
+      root.lights = Object.assign({}, root.lights) // Forces the update to widget
+    }
+
+    function getColor() {
+        // TODO: Get color from hue bridge
+        return autoHueColor
     }
 
     function applyColorHelper() {
@@ -176,18 +250,22 @@ Singleton {
         if (key === "autoColor") {
             autoColor = value
             applyColorHelper()
+        } else if (key === "updateOnRelease") {
+            updateOnRelease = value
         } else {
             getLightsHelper()
-            //getGroupsHelper()
+            getGroupsHelper()
         }
+
     }
 
     function applySettings(values) {
         bridgeIP = values["bridgeIP"].trim()
         api = values["api"].trim()
         autoColor = values["autoColor"]
+        updateOnRelease = values["updateOnRelease"]
         getLightsHelper()
-        //getGroupsHelper()
+        getGroupsHelper()
     }
 
     Connections {
@@ -204,4 +282,3 @@ Singleton {
           }
     })
 }
-
