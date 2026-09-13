@@ -479,10 +479,16 @@ index de25678a..00000000
 -    }
 -}
 diff --git a/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml b/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
-index d35908ed..39bdeeb3 100644
+index d35908ed..ea80f00b 100644
 --- a/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
 +++ b/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
-@@ -5,8 +5,9 @@ import QtQuick.Controls
+@@ -1,20 +1,35 @@
+ pragma ComponentBehavior: Bound
+ 
+-import QtQuick
++import QtQuick 2.0
++import Quickshell.Io
+ import QtQuick.Controls
  import QtQuick.Layouts
  import qs.modules.theme
  import qs.modules.components
@@ -493,7 +499,103 @@ index d35908ed..39bdeeb3 100644
  
  Item {
      id: root
-@@ -102,8 +103,13 @@ Item {
+ 
+     required property BluetoothDevice device
+ 
++    property bool connected: device.connected
++    property bool isSimple: width < 325
++
+     property bool expanded: false
++    property bool expandCodecSelector: false
++    property var availableCodecs: []
++    property int activeCodec: 0
++    property var codecIndex: ({ 0:"Off",131076:"ACC", 131074:"SBC_QX", 131073:"SBC", 131080:"LDAC",131078:"aptX", 131079:"aptX HD", 131081:"aptx LL", 196864:"CVSD", 196865:"MSBC"})
++    property var pipewireID: null
+ 
++    onExpandedChanged: {
++      if (!expanded) {
++        expandCodecSelector = false
++      }
++    }
+     implicitHeight: contentColumn.implicitHeight + 16  // 8px margins top + bottom
+ 
+     Behavior on implicitHeight {
+@@ -38,6 +53,74 @@ Item {
+         onClicked: root.expanded = !root.expanded
+     }
+ 
++    Process {
++      id: getDevicesRunner
++      running: false
++      command: ["bash", "-c", "wpctl list audio devices"]
++
++      stdout: StdioCollector {
++        onStreamFinished: {
++            const data = text.trim()
++            if (data) {
++              let deviceList = data.split("\n")
++              for (let i=0; i<deviceList.length; i++) {
++                if (deviceList[i].includes("bluez_card.")) {
++                  deviceList[i] = deviceList[i].split("bluez_card.")
++                  deviceList[i][0] = deviceList[i][0].trim();
++                  deviceList[i][1] = deviceList[i][1].split("audio")[0].trim().split("_").join(":")
++                  if (deviceList[i][1] === device.address) {
++                      pipewireID = deviceList[i][0]
++                      getProfiles(deviceList[i][0])
++                  }
++                }
++              }
++            }
++        }
++      }
++    }
++
++    Process {
++      id: getDeviceProfilesRunner
++      running: false
++
++      stdout: StdioCollector {
++        onStreamFinished: {
++            const data = JSON.parse(text)
++            if (data) {
++              let enumProfile = data.info.params.EnumProfile
++              let tempAvailableCodecs = []
++              for (let i=0; i<enumProfile.length; i++) {
++                if (root.codecIndex[enumProfile[i].index] === undefined) {
++                  root.codecIndex[enumProfile[i].index] = enumProfile[i].description
++                  console.log("Bluetooth: New id "+enumProfile[i].index+" found. Description:"+enumProfile[i].description+". Open git issue with id and description or patch it urself")
++                }
++                tempAvailableCodecs.push(enumProfile[i].index)
++              }
++              availableCodecs = tempAvailableCodecs
++              root.activeCodec = data.info.params.Profile[0].index
++            }
++        }
++      }
++    }
++
++    Process {
++      id: setProfileRunner
++      running: false
++    }
++
++    function getProfiles(deviceID) {
++      getDeviceProfilesRunner.exec(["bash", "-c",'pw-dump | jq -r ".[] | select(.id == '+deviceID+')"'])
++    }
++
++    function getPipewireDevices() {
++        getDevicesRunner.running = true
++    }
++
++    function setProfile(profileID) {
++      setProfileRunner.exec(["bash", "-c","wpctl set-profile "+pipewireID+" "+profileID])
++    }
++
++
+     ColumnLayout {
+         id: contentColumn
+         anchors.left: parent.left
+@@ -102,8 +185,13 @@ Item {
                      Layout.fillWidth: true
                      visible: root.device?.connected || root.device?.paired || root.expanded
                      text: {
@@ -508,7 +610,7 @@ index d35908ed..39bdeeb3 100644
                              status = "Connected";
                          } else if (root.device?.paired) {
                              status = "Paired";
-@@ -112,7 +118,7 @@ Item {
+@@ -112,7 +200,7 @@ Item {
                          }
  
                          if (root.device?.batteryAvailable) {
@@ -517,7 +619,7 @@ index d35908ed..39bdeeb3 100644
                          }
  
                          return status;
-@@ -138,7 +144,7 @@ Item {
+@@ -138,7 +226,7 @@ Item {
  
                  Text {
                      text: {
@@ -526,7 +628,7 @@ index d35908ed..39bdeeb3 100644
                          if (battery > 80)
                              return Icons.batteryFull;
                          if (battery > 60)
-@@ -152,7 +158,7 @@ Item {
+@@ -152,7 +240,7 @@ Item {
                      font.family: Icons.font
                      font.pixelSize: 18
                      color: {
@@ -535,16 +637,52 @@ index d35908ed..39bdeeb3 100644
                          if (battery > 60)
                              return Colors.green;
                          if (battery > 40)
-@@ -208,6 +214,37 @@ Item {
+@@ -208,6 +296,73 @@ Item {
                  Layout.fillWidth: true
              }
  
++            Button {
++                id: codecButton
++                implicitWidth: 56
++                implicitHeight: 32
++                flat: true
++                visible: pipewireID !== null && root.expanded && !isSimple
++
++                background: StyledRect {
++                    variant: "internalbg"
++                    radius: Styling.radius(4)
++                    bottomLeftRadius: expandCodecSelector ? 0 : Styling.radius(4)
++                    bottomRightRadius: expandCodecSelector ? 0 : Styling.radius(4)
++                    height: expandCodecSelector ? 40 : 32
++                    clip: true
++
++                    Behavior on height {
++                        enabled: Config.animDuration > 0
++                        NumberAnimation {
++                            duration: Config.animDuration / 4
++                        }
++                    }
++                }
++
++                contentItem: Text {
++                    text: root.codecIndex[root.activeCodec]
++                    font.family: Config.theme.font
++                    font.pixelSize: Styling.fontSize(-1)
++                    color: Colors.overSurfaceVariant
++                    horizontalAlignment: Text.AlignHCenter
++                    verticalAlignment: Text.AlignVCenter
++                }
++
++                onClicked: {root.expandCodecSelector = !root.expandCodecSelector}
++            }
++
 +            // Connect/Disconnect button
 +            Button {
 +                id: trustButton
 +                flat: true
 +                implicitWidth: 32
 +                implicitHeight: 32
++                visible: !isSimple
 +
 +                background: StyledRect {
 +                    variant: root.device?.trusted ? "primary" : "internalbg"
@@ -573,8 +711,111 @@ index d35908ed..39bdeeb3 100644
              // Connect/Disconnect button
              Button {
                  id: actionButton
+@@ -238,5 +393,102 @@ Item {
+                 }
+             }
+         }
++        Flickable {
++            id: codecsFlickable
++            Layout.preferredHeight: 40
++            Layout.fillWidth: true
++            Layout.alignment: Qt.AlignTop
++            contentWidth: root.availableCodecs.length * 60 + 12
++            contentHeight: root.expanded && root.expandCodecSelector ? 40 : 0
++            clip: true
++            interactive: true
++            visible: root.expanded && root.expandCodecSelector
++            flickableDirection: Flickable.HorizontalFlick
++            boundsBehavior: Flickable.OvershootBounds
++
++            Behavior on contentHeight {
++                enabled: Config.animDuration > 0
++                NumberAnimation {
++                    duration: Config.animDuration
++                    easing.type: Easing.OutCubic
++                }
++            }
++            opacity: root.expanded && root.expandCodecSelector ? 1 : 0
++
++            Behavior on opacity {
++                enabled: Config.animDuration * 2 > 0
++                NumberAnimation {
++                    duration: Config.animDuration
++                    easing.type: Easing.OutCubic
++                }
++            }
++
++            Item {
++                anchors.fill: parent
++                anchors.leftMargin: 2
++                anchors.rightMargin: 2
++                StyledRect {
++                    variant: "internalbg"
++                    anchors.fill: parent
++                    radius: Styling.radius(4)
++                }
++
++                RowLayout {
++                    id: codecRow
++                    anchors.fill: parent
++                    anchors.margins: 4
++                    spacing: 4
++
++                    Repeater {
++                        model: root.availableCodecs
++                        Button {
++                            id: codecSelectButton
++                            required property var modelData
++                            flat: true
++                            implicitWidth: 56
++                            implicitHeight: 32
++
++                            background: StyledRect {
++                                variant: "common"
++                                radius: Styling.radius(4)
++                            }
++
++                            contentItem: Text {
++                                text: {
++                                    return root.codecIndex[modelData]
++                                }
++                                font.family: Config.theme.font
++                                font.pixelSize: Styling.fontSize(-1)
++                                color: Colors.overSurfaceVariant
++                                horizontalAlignment: Text.AlignHCenter
++                                verticalAlignment: Text.AlignVCenter
++                            }
++
++                            onClicked: {
++                              setProfile(modelData)
++                              expandCodecSelector = false
++                              activeCodec = modelData
++                            }
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    Timer {
++        id: connectTimer
++        interval: 2500;
++        running: connected && !isSimple;
++        repeat: false;
++        onTriggered: {
++          getPipewireDevices();
++        }
++    }
++
++    Component.onCompleted: {
++        if (!isSimple) {
++          getPipewireDevices()
++        }
+     }
+ }
 diff --git a/modules/widgets/dashboard/controls/BluetoothPanel.qml b/modules/widgets/dashboard/controls/BluetoothPanel.qml
-index 462f39f6..34c94273 100644
+index 462f39f6..bd8c807f 100644
 --- a/modules/widgets/dashboard/controls/BluetoothPanel.qml
 +++ b/modules/widgets/dashboard/controls/BluetoothPanel.qml
 @@ -7,7 +7,8 @@ import Quickshell
@@ -619,7 +860,7 @@ index 462f39f6..34c94273 100644
  
 -        model: BluetoothService.friendlyDeviceList
 +        model: {
-+          if (!Bluetooth.defaultAdapter.enabled) return [];
++          if (!(Bluetooth.defaultAdapter?.enabled ? true : false)) return [];
 +          var bluetoothDevices = Bluetooth.devices.values
 +          var filteredDevices = []
 +          for (var i = 0; i < Bluetooth.devices.values.length; i++) {
@@ -647,7 +888,7 @@ index 462f39f6..34c94273 100644
                  title: "Bluetooth"
                  showToggle: true
 -                toggleChecked: BluetoothService.enabled
-+                toggleChecked: Bluetooth.defaultAdapter.enabled
++                toggleChecked: Bluetooth.defaultAdapter?.enabled ? true : false
  
                  actions: [
                      {
@@ -657,8 +898,8 @@ index 462f39f6..34c94273 100644
                          tooltip: "Scan for devices",
 -                        enabled: BluetoothService.enabled,
 -                        loading: BluetoothService.discovering || BluetoothService.isUpdating,
-+                        enabled: Bluetooth.defaultAdapter.enabled,
-+                        loading: Bluetooth.defaultAdapter.discovering,
++                        enabled: Bluetooth.defaultAdapter?.enabled ? true : false,
++                        loading: Bluetooth.defaultAdapter?.discovering ? true : false,
                          onClicked: function () {
 -                            BluetoothService.startDiscovery();
 +                            Bluetooth.defaultAdapter.discovering = !Bluetooth.defaultAdapter.discovering;
@@ -681,8 +922,8 @@ index 462f39f6..34c94273 100644
              anchors.centerIn: parent
 -            visible: deviceList.count === 0 && !BluetoothService.discovering
 -            text: BluetoothService.enabled ? "No devices found" : "Bluetooth is disabled"
-+            visible: deviceList.count === 0 && !Bluetooth.defaultAdapter.discovering
-+            text: Bluetooth.defaultAdapter.enabled ? "No devices found" : "Bluetooth is disabled"
++            visible: deviceList.count === 0 && !(Bluetooth.defaultAdapter?.discovering ? true : false)
++            text: Bluetooth.defaultAdapter?.enabled ? "No devices found" : "Bluetooth is disabled"
              font.family: Config.theme.font
              font.pixelSize: Config.theme.fontSize
              color: Colors.overSurfaceVariant
