@@ -1,5 +1,5 @@
 diff --git a/modules/bar/BarContent.qml b/modules/bar/BarContent.qml
-index b9e57ca7..578b531b 100644
+index b9e57ca7..b6d6a9eb 100644
 --- a/modules/bar/BarContent.qml
 +++ b/modules/bar/BarContent.qml
 @@ -4,6 +4,7 @@ import QtQuick.Layouts
@@ -10,7 +10,15 @@ index b9e57ca7..578b531b 100644
  import qs.modules.bar.workspaces
  import qs.modules.theme
  import qs.modules.bar.clock
-@@ -37,16 +38,22 @@ Item {
+@@ -30,23 +31,29 @@ Item {
+ 
+     // Auto-hide properties
+     onPinnedChanged: {
+-        if (Config.bar && Config.bar.pinnedOnStartup !== pinned) {
++        if (Config.bar && Config.bar.pinnedOnStartup !== pinned && screen === compositorMonitor.focusedMonitor) {
+             Config.bar.pinnedOnStartup = pinned;
+         }
+     }
  
      property bool pinned: (Config.bar && Config.bar.pinnedOnStartup !== undefined ? Config.bar.pinnedOnStartup : true)
  
@@ -18,7 +26,7 @@ index b9e57ca7..578b531b 100644
      readonly property var compositorMonitor: AxctlService.monitorFor(screen)
 -    readonly property var toplevels: (!compositorMonitor || !compositorMonitor.activeWorkspace || !AxctlService.clients.values) ? [] : AxctlService.clients.values.filter(c => c.workspace.id === compositorMonitor.activeWorkspace.id)
 +    readonly property var hyprlandMonitor: Hyprland.monitorFor(screen)
-+    readonly property var toplevels: hyprlandMonitor.activeWorkspace.toplevels.values
++    readonly property var toplevels: hyprlandMonitor.activeWorkspace?.toplevels.values ?? []
  
 -    // Fullscreen detection - use ToplevelManager (native Wayland) for reliable detection
 +    // Fullscreen detection - check if a toplevel is fullscreen on this screen
@@ -41,7 +49,7 @@ index b9e57ca7..578b531b 100644
  
  
 diff --git a/modules/shell/UnifiedShellPanel.qml b/modules/shell/UnifiedShellPanel.qml
-index 028c2dce..5cdc2557 100644
+index 028c2dce..465dcdc1 100644
 --- a/modules/shell/UnifiedShellPanel.qml
 +++ b/modules/shell/UnifiedShellPanel.qml
 @@ -2,6 +2,7 @@ import QtQuick
@@ -57,7 +65,7 @@ index 028c2dce..5cdc2557 100644
      }
      WlrLayershell.namespace: "ambxst"
 -    WlrLayershell.layer: WlrLayer.Overlay
-+    WlrLayershell.layer: WlrLayer.top
++    WlrLayershell.layer: WlrLayer.Top // Monitor cannot use direct_scanout = 1 if value is Wlr.Overlay, bad for gaming.
      exclusionMode: ExclusionMode.Ignore
  
      // Whether we need to capture full-screen input for click-outside detection.
@@ -66,7 +74,7 @@ index 028c2dce..5cdc2557 100644
  
      readonly property var compositorMonitor: AxctlService.monitorFor(targetScreen)
 +    readonly property var hyprlandMonitor: Hyprland.monitorFor(targetScreen)
-+    readonly property var toplevels: hyprlandMonitor.activeWorkspace.toplevels.values
++    readonly property var toplevels: hyprlandMonitor.activeWorkspace?.toplevels.values ?? []
      readonly property bool hasFullscreenWindow: {
 -        if (!compositorMonitor)
 -            return false;
