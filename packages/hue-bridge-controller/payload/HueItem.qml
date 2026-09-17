@@ -13,6 +13,12 @@ Item {
     property var itemData: isGroup ? HueService.groups[itemID] : HueService.lights[itemID]
     height: 80
 
+    onItemDataChanged: {
+        if (visible && !isGroup) {
+            brightnessSlider.value = HueService.lights[itemID].bri/255
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 8
@@ -60,6 +66,12 @@ Item {
                     icon: ""
                     updateOnRelease: HueService.updateOnRelease
                     progressColor: (isGroup ? itemData.any_on : itemData.on) ? Styling.srItem("overprimary") : Styling.srItem("focus")
+
+                    onVisibleChanged: {
+                        if (visible) {
+                            value = isGroup ? HueService.groups[itemID].bri/255 : HueService.lights[itemID].bri/255
+                        }
+                    }
 
                     onValueChanged: {
                         if (isGroup) {
@@ -121,9 +133,4 @@ Item {
             }
         }
     }
-    onVisibleChanged: {
-      if (visible && isGroup) {
-        HueService.getGroupsHelper()
-      }
-    }  
 }

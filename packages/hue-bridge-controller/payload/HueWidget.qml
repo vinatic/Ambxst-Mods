@@ -12,29 +12,37 @@ StyledRect {
     property var groupIDs: HueService.groups != null ? Object.keys(HueService.groups) : []
 
     Layout.fillWidth: true
-    Layout.preferredHeight: 88 * groupIDs.length
+    Layout.preferredHeight: groupIDs.length * 88
     radius: Styling.radius(4)
-    visible: groupIDs.length <= 1
+    visible: groupIDs.length >= 1
 
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 4
-        spacing: 4
 
         Repeater {
             model: groupIDs
-            HueItem {
-                Layout.alignment: Qt.AlignTop
+            Item {
                 required property var modelData
-                itemID: modelData
-                isGroup: true
+                Layout.alignment: Qt.AlignTop
                 Layout.fillWidth: true
-              }
+                Layout.preferredHeight: 80
+                StyledRect {
+                  anchors.fill: parent
+                  variant: "internalbg"
+                  radius: Styling.radius(4)
+                }
+                HueItem {
+                    anchors.fill: parent
+                    itemID: modelData
+                    isGroup: true
+                }
+            }
         }
     }
 
     Component.onCompleted: {
-        HueService.getGroupsHelper()
+        HueService.initialize()
     }
 
 }

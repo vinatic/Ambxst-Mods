@@ -12,8 +12,7 @@ StyledRect {
     variant: "transparent"
 
     Component.onCompleted: {
-        HueService.getLightsHelper();
-        HueService.getGroupsHelper();
+        HueService.initialize()
     }
 
     property var groupIDs: HueService.groups != null ? Object.keys(HueService.groups) : []
@@ -22,17 +21,13 @@ StyledRect {
         anchors.fill: parent
         spacing: 8
 
-        StyledRect {
+        Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            variant: "transparent"
 
-            StyledRect {
+            Item {
                 id: huePane
-                variant: "internalbg"
-
                 anchors.fill: parent
-                radius: Styling.radius(4)
 
                 Item {
                     anchors.fill: parent
@@ -100,12 +95,6 @@ StyledRect {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     onClicked: groupSelect.expanded = !groupSelect.expanded
-                                }
-
-                                onExpandedChanged: {
-                                    if (groupSelect.expanded) {
-                                      HueService.getLightsHelper()
-                                    }
                                 }
 
                                 ColumnLayout {

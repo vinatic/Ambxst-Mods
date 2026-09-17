@@ -37,6 +37,15 @@ Singleton {
         applyColorHelper();
     }
 
+    property bool _initialized: false
+
+    function initialize() {
+        if (_initialized) return;
+        _initialized = true;
+        getLightsHelper()
+        getGroupsHelper()
+    }
+
     Process {
       id: getLights
       running: false
@@ -175,7 +184,11 @@ Singleton {
     function setGroupBrightness(id, value) {
       let param = "'{"+'"bri": '+value+"}'";
       hueGroupRunCommandHelper(id, param);
-      root.groups[id].bri = value
+      root.groups[id] = Object.assign({}, root.groups[id], {"bri": value})
+      root.groups = Object.assign({}, root.groups) // Forces the update to widget
+      for (let i=0; i<groups[id].lights.length; i++) {
+        updateLightBri(root.groups[id].lights[i], value);
+      }
     }
 
     function toggleGroupPower(id) {
