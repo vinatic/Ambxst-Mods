@@ -479,7 +479,7 @@ index de25678a..00000000
 -    }
 -}
 diff --git a/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml b/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
-index d35908ed..ea80f00b 100644
+index d35908ed..4bc54f8a 100644
 --- a/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
 +++ b/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
 @@ -1,20 +1,35 @@
@@ -509,7 +509,7 @@ index d35908ed..ea80f00b 100644
 +    property bool expandCodecSelector: false
 +    property var availableCodecs: []
 +    property int activeCodec: 0
-+    property var codecIndex: ({ 0:"Off",131076:"ACC", 131074:"SBC_QX", 131073:"SBC", 131080:"LDAC",131078:"aptX", 131079:"aptX HD", 131081:"aptx LL", 196864:"CVSD", 196865:"MSBC"})
++    property var codecIndex: { 0:"Off",131076:"ACC", 131074:"SBC_QX", 131073:"SBC", 131080:"LDAC",131078:"aptX", 131079:"aptX HD", 131081:"aptx LL", 196864:"CVSD", 196865:"MSBC"}
 +    property var pipewireID: null
  
 +    onExpandedChanged: {
@@ -520,7 +520,7 @@ index d35908ed..ea80f00b 100644
      implicitHeight: contentColumn.implicitHeight + 16  // 8px margins top + bottom
  
      Behavior on implicitHeight {
-@@ -38,6 +53,74 @@ Item {
+@@ -38,13 +53,79 @@ Item {
          onClicked: root.expanded = !root.expanded
      }
  
@@ -567,7 +567,7 @@ index d35908ed..ea80f00b 100644
 +                }
 +                tempAvailableCodecs.push(enumProfile[i].index)
 +              }
-+              availableCodecs = tempAvailableCodecs
++              availableCodecs =  tempAvailableCodecs
 +              root.activeCodec = data.info.params.Profile[0].index
 +            }
 +        }
@@ -595,6 +595,22 @@ index d35908ed..ea80f00b 100644
      ColumnLayout {
          id: contentColumn
          anchors.left: parent.left
+         anchors.right: parent.right
+         anchors.top: parent.top
+-        anchors.leftMargin: 12
+-        anchors.rightMargin: 12
+         anchors.topMargin: 8
+         spacing: 8
+ 
+@@ -52,6 +133,8 @@ Item {
+         RowLayout {
+             Layout.fillWidth: true
+             Layout.preferredHeight: 32
++            Layout.leftMargin: 12
++            Layout.rightMargin: 12
+             spacing: 12
+ 
+             // Device icon
 @@ -102,8 +185,13 @@ Item {
                      Layout.fillWidth: true
                      visible: root.device?.connected || root.device?.paired || root.expanded
@@ -637,7 +653,16 @@ index d35908ed..ea80f00b 100644
                          if (battery > 60)
                              return Colors.green;
                          if (battery > 40)
-@@ -208,6 +296,73 @@ Item {
+@@ -168,6 +256,8 @@ Item {
+         // Expanded content with action buttons
+         RowLayout {
+             Layout.fillWidth: true
++            Layout.leftMargin: 12
++            Layout.rightMargin: 12
+             visible: root.expanded
+             spacing: 8
+             opacity: root.expanded ? 1 : 0
+@@ -208,6 +298,74 @@ Item {
                  Layout.fillWidth: true
              }
  
@@ -666,6 +691,7 @@ index d35908ed..ea80f00b 100644
 +
 +                contentItem: Text {
 +                    text: root.codecIndex[root.activeCodec]
++                    elide: Text.ElideLeft
 +                    font.family: Config.theme.font
 +                    font.pixelSize: Styling.fontSize(-1)
 +                    color: Colors.overSurfaceVariant
@@ -711,7 +737,7 @@ index d35908ed..ea80f00b 100644
              // Connect/Disconnect button
              Button {
                  id: actionButton
-@@ -238,5 +393,102 @@ Item {
+@@ -238,5 +396,106 @@ Item {
                  }
              }
          }
@@ -720,7 +746,7 @@ index d35908ed..ea80f00b 100644
 +            Layout.preferredHeight: 40
 +            Layout.fillWidth: true
 +            Layout.alignment: Qt.AlignTop
-+            contentWidth: root.availableCodecs.length * 60 + 12
++            contentWidth: root.availableCodecs.length * 60 + 36 >= 330 ? root.availableCodecs.length * 60 + 36 : 330
 +            contentHeight: root.expanded && root.expandCodecSelector ? 40 : 0
 +            clip: true
 +            interactive: true
@@ -747,8 +773,9 @@ index d35908ed..ea80f00b 100644
 +
 +            Item {
 +                anchors.fill: parent
-+                anchors.leftMargin: 2
-+                anchors.rightMargin: 2
++                anchors.leftMargin: 12
++                anchors.rightMargin: 12
++
 +                StyledRect {
 +                    variant: "internalbg"
 +                    anchors.fill: parent
@@ -757,9 +784,10 @@ index d35908ed..ea80f00b 100644
 +
 +                RowLayout {
 +                    id: codecRow
-+                    anchors.fill: parent
 +                    anchors.margins: 4
-+                    spacing: 4
++                    anchors.left: parent.left
++                    anchors.bottom: parent.bottom
++                    anchors.top: parent.top
 +
 +                    Repeater {
 +                        model: root.availableCodecs
@@ -769,6 +797,7 @@ index d35908ed..ea80f00b 100644
 +                            flat: true
 +                            implicitWidth: 56
 +                            implicitHeight: 32
++                            Layout.alignment: Qt.AlignVCenter
 +
 +                            background: StyledRect {
 +                                variant: "common"
@@ -779,6 +808,7 @@ index d35908ed..ea80f00b 100644
 +                                text: {
 +                                    return root.codecIndex[modelData]
 +                                }
++                                elide: Text.ElideLeft
 +                                font.family: Config.theme.font
 +                                font.pixelSize: Styling.fontSize(-1)
 +                                color: Colors.overSurfaceVariant
@@ -928,7 +958,7 @@ index 462f39f6..bd8c807f 100644
              font.pixelSize: Config.theme.fontSize
              color: Colors.overSurfaceVariant
 diff --git a/modules/widgets/dashboard/widgets/QuickControls.qml b/modules/widgets/dashboard/widgets/QuickControls.qml
-index bc4a6acc..01fba22a 100644
+index bc4a6acc..66195ebd 100644
 --- a/modules/widgets/dashboard/widgets/QuickControls.qml
 +++ b/modules/widgets/dashboard/widgets/QuickControls.qml
 @@ -5,6 +5,7 @@ import qs.modules.components
@@ -953,17 +983,17 @@ index bc4a6acc..01fba22a 100644
                      Layout.preferredHeight: 48
                      iconName: {
 -                        if (!BluetoothService.enabled)
-+                        if (!Bluetooth.defaultAdapter.enabled)
++                        if (!(Bluetooth.defaultAdapter?.enabled ? true : false))
                              return Icons.bluetoothOff;
 -                        if (BluetoothService.connected)
 -                            return Icons.bluetoothConnected;
                          return Icons.bluetooth;
                      }
 -                    isActive: BluetoothService.enabled || root.expandedPanel === 1
-+                    isActive: Bluetooth.defaultAdapter.enabled || root.expandedPanel === 1
++                    isActive: (Bluetooth.defaultAdapter?.enabled ? true : false) || root.expandedPanel === 1
                      tooltipText: {
 -                        if (!BluetoothService.enabled)
-+                        if (!Bluetooth.defaultAdapter.enabled)
++                        if (!(Bluetooth.defaultAdapter?.enabled ? true : false))
                              return "Bluetooth: Off";
 -                        if (BluetoothService.connected)
 -                            return "Bluetooth: Connected";
