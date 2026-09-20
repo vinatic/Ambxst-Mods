@@ -1,5 +1,5 @@
 diff --git a/modules/bar/BarContent.qml b/modules/bar/BarContent.qml
-index b9e57ca7..b6d6a9eb 100644
+index 9d43848a..0d207d3a 100644
 --- a/modules/bar/BarContent.qml
 +++ b/modules/bar/BarContent.qml
 @@ -4,6 +4,7 @@ import QtQuick.Layouts
@@ -10,7 +10,7 @@ index b9e57ca7..b6d6a9eb 100644
  import qs.modules.bar.workspaces
  import qs.modules.theme
  import qs.modules.bar.clock
-@@ -30,23 +31,29 @@ Item {
+@@ -30,7 +31,7 @@ Item {
  
      // Auto-hide properties
      onPinnedChanged: {
@@ -19,10 +19,25 @@ index b9e57ca7..b6d6a9eb 100644
              Config.bar.pinnedOnStartup = pinned;
          }
      }
+@@ -51,16 +52,37 @@ Item {
+         }
+     }
  
-     property bool pinned: (Config.bar && Config.bar.pinnedOnStartup !== undefined ? Config.bar.pinnedOnStartup : true)
- 
--    // Monitor reference and reference to toplevels on monitor
++    // Keybind toggle (SUPER+SHIFT+B by default). Unpinning also drops any
++    // pending hover reveal so the bar hides immediately instead of after
++    // the mouse-leave delay.
++    Connections {
++        target: GlobalStates
++        function onBarPinToggled() {
++            root.pinned = !root.pinned;
++            if (!root.pinned) {
++                root.hoverActive = false;
++                root.hideDelayTimer.stop();
++            }
++        }
++    }
++
+     // Monitor reference and reference to toplevels on monitor
      readonly property var compositorMonitor: AxctlService.monitorFor(screen)
 -    readonly property var toplevels: (!compositorMonitor || !compositorMonitor.activeWorkspace || !AxctlService.clients.values) ? [] : AxctlService.clients.values.filter(c => c.workspace.id === compositorMonitor.activeWorkspace.id)
 +    readonly property var hyprlandMonitor: Hyprland.monitorFor(screen)
