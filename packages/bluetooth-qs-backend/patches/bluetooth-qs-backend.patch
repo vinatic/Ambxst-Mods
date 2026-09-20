@@ -479,10 +479,10 @@ index de25678a..00000000
 -    }
 -}
 diff --git a/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml b/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
-index d35908ed..4bc54f8a 100644
+index 42b51be6..adaac420 100644
 --- a/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
 +++ b/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
-@@ -1,20 +1,35 @@
+@@ -1,21 +1,39 @@
  pragma ComponentBehavior: Bound
  
 -import QtQuick
@@ -490,11 +490,13 @@ index d35908ed..4bc54f8a 100644
 +import Quickshell.Io
  import QtQuick.Controls
  import QtQuick.Layouts
++import QtQuick.Effects
++import qs.modules.corners
  import qs.modules.theme
  import qs.modules.components
 -import qs.modules.services
-+//import qs.modules.services
  import qs.config
++import qs.modules.services
 +import Quickshell.Bluetooth
  
  Item {
@@ -512,15 +514,18 @@ index d35908ed..4bc54f8a 100644
 +    property var codecIndex: { 0:"Off",131076:"ACC", 131074:"SBC_QX", 131073:"SBC", 131080:"LDAC",131078:"aptX", 131079:"aptX HD", 131081:"aptx LL", 196864:"CVSD", 196865:"MSBC"}
 +    property var pipewireID: null
  
+-    implicitHeight: contentColumn.implicitHeight + 16  // 8px margins top + bottom
 +    onExpandedChanged: {
 +      if (!expanded) {
 +        expandCodecSelector = false
 +      }
 +    }
-     implicitHeight: contentColumn.implicitHeight + 16  // 8px margins top + bottom
++
++    implicitHeight: root.expandCodecSelector ? contentColumn.implicitHeight + codecItem.contentHeight + codecItem.contentBottomPadding + 16 : contentColumn.implicitHeight + 16  // 8px margins top + bottom
  
      Behavior on implicitHeight {
-@@ -38,13 +53,79 @@ Item {
+         enabled: Config.animDuration > 0
+@@ -38,13 +56,338 @@ Item {
          onClicked: root.expanded = !root.expanded
      }
  
@@ -591,6 +596,265 @@ index d35908ed..4bc54f8a 100644
 +      setProfileRunner.exec(["bash", "-c","wpctl set-profile "+pipewireID+" "+profileID])
 +    }
 +
++    Item {
++        id: codecItem
++        anchors.bottom: parent.bottom
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.bottomMargin: 8
++        anchors.rightMargin: 8
++        anchors.leftMargin: 8
++        implicitHeight: root.expanded && expandCodecSelector && !isSimple ? 32 + contentHeight + contentBottomPadding : 32
++        visible: pipewireID !== null && root.expanded && !isSimple
++        property real contentHeight: 40
++        property real contentBottomPadding: 6
++        property real trueCodecContentWidth: root.availableCodecs.length * 62 - 2
++        property real codecContentWidth: codecItem.trueCodecContentWidth >= 360 ? codecItem.trueCodecContentWidth : 360
++
++        property real codecContentRightMargin: {
++          if (!codecItem.visible) return 0;
++          let codecs = root.availableCodecs.length
++          let margin = (codecItem.width - codecItem.trueCodecContentWidth)
++          let marginHelper = (464 - codecItem.codecContentWidth)
++          if (margin > marginHelper) {
++              return marginHelper
++          } else if (margin > 0) {
++              return margin
++          } else {
++              return 0
++          }
++        }
++
++        Behavior on implicitHeight {
++            enabled: Config.animDuration > 0
++            NumberAnimation {
++                duration: Config.animDuration
++                easing.type: Easing.OutCubic
++            }
++        }
++
++        // StyledRect extendido que cubre todo (notch + corners) para usar como máscara
++        StyledRect {
++            id: codecFullBackground
++            variant: "internalbg"
++            anchors.fill: parent
++            enabled: true // No interactuable
++            enableBorder: false // No usar border de StyledRect, el Canvas se encarga
++            animateRadius: false // Custom animation below
++
++            property int defaultRadius: Config.roundness > 0 ? (Config.roundness + 4) : 0
++
++            topLeftRadius: defaultRadius
++            topRightRadius: defaultRadius
++            bottomLeftRadius: defaultRadius
++            bottomRightRadius: defaultRadius
++
++            opacity: root.expanded ? 1 : 0
++
++            Behavior on opacity {
++                enabled: Config.animDuration > 0
++                NumberAnimation {
++                    duration: Config.animDuration / 2
++                }
++            }
++
++            Behavior on bottomLeftRadius {
++                enabled: Config.animDuration > 0
++                NumberAnimation {
++                    duration: Config.animDuration
++                    easing.type: Easing.OutQuart
++                    easing.overshoot: 1.0
++                }
++            }
++
++            Behavior on bottomRightRadius {
++                enabled: Config.animDuration > 0
++                NumberAnimation {
++                    duration: Config.animDuration
++                    easing.type: Easing.OutQuart
++                    easing.overshoot: 1.0
++                }
++            }
++
++            Behavior on topLeftRadius {
++                enabled: Config.animDuration > 0
++                NumberAnimation {
++                    duration: Config.animDuration
++                    easing.type: Easing.OutQuart
++                    easing.overshoot: 1.0
++                }
++            }
++
++            Behavior on topRightRadius {
++                enabled: Config.animDuration > 0
++                NumberAnimation {
++                    duration: Config.animDuration
++                    easing.type: Easing.OutQuart
++                    easing.overshoot: 1.0
++                }
++            }
++
++            layer.enabled: true
++            layer.smooth: true
++            layer.effect: MultiEffect {
++                maskEnabled: true
++                maskSource: codecFullMask
++                maskThresholdMin: 0.5
++                maskThresholdMax: 1.0
++                maskSpreadAtMin: 1.0
++            }
++            Flickable {
++                id: codecsFlickable
++                height: codecItem.contentHeight
++                anchors.bottom: parent.bottom
++                anchors.right: parent.fill
++                anchors.rightMargin: codecItem.codecContentRightMargin
++                width: parent.width - codecItem.codecContentRightMargin + 2
++                contentWidth: codecItem.trueCodecContentWidth
++                contentHeight: 34
++                interactive: true
++                visible: root.expanded && root.expandCodecSelector
++                flickableDirection: Flickable.HorizontalFlick
++                boundsBehavior: Flickable.OvershootBounds
++
++                opacity: root.expanded && root.expandCodecSelector ? 1 : 0
++
++                Behavior on opacity {
++                    enabled: Config.animDuration * 2 > 0
++                    NumberAnimation {
++                        duration: Config.animDuration
++                        easing.type: Easing.OutCubic
++                    }
++                }
++
++                Item {
++                    anchors.fill: parent
++                    RowLayout {
++                        id: codecRow
++                        anchors.margins: 4
++                        anchors.left: parent.left
++                        anchors.bottom: parent.bottom
++                        anchors.top: parent.top
++
++                        Repeater {
++                            model: root.availableCodecs
++                            Button {
++                                id: codecSelectButton
++                                required property var modelData
++                                flat: true
++                                implicitWidth: 56
++                                implicitHeight: 32
++                                Layout.alignment: Qt.AlignVCenter
++
++                                background: StyledRect {
++                                    variant: "common"
++                                    radius: Styling.radius(4)
++                                }
++
++                                contentItem: Text {
++                                    text: {
++                                        return root.codecIndex[modelData]
++                                    }
++                                      elide: Text.ElideLeft
++                                      font.family: Config.theme.font
++                                      font.pixelSize: Styling.fontSize(-1)
++                                      color: Colors.overSurfaceVariant
++                                      horizontalAlignment: Text.AlignHCenter
++                                      verticalAlignment: Text.AlignVCenter
++                                }
++
++                                onClicked: {
++                                  setProfile(modelData)
++                                  expandCodecSelector = false
++                                  activeCodec = modelData
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++        // Máscara completa para el notch + corners
++        Item {
++            id: codecFullMask
++            visible: false
++            anchors.fill: parent
++            height: parent.implicitHeight
++            layer.enabled: true
++            layer.smooth: true
++
++            Rectangle {
++                id: codecContent
++                anchors.bottom: parent.bottom
++                anchors.left: parent.left
++                anchors.right: parent.right
++                anchors.rightMargin: codecItem.codecContentRightMargin
++                height: codecItem.contentHeight
++                color: root.expandCodecSelector ? "white" : "transparent"
++                radius: Styling.radius(4)
++            }
++
++            // Center rect mask
++            Rectangle {
++                id: centerMaskPart
++                anchors.top: parent.top
++                anchors.right: parent.right
++                anchors.rightMargin: trustButton.width + actionButton.width + 20
++                width: 56
++                height: root.expandCodecSelector ? 32 + codecItem.contentBottomPadding : 32
++                color: root.expandCodecSelector ? "white" : "transparent"
++
++                topLeftRadius: Styling.radius(4)
++                topRightRadius: Styling.radius(4)
++                bottomLeftRadius: root.expandCodecSelector ? 0 : Styling.radius(4)
++                bottomRightRadius: root.expandCodecSelector ? 0 : Styling.radius(4)
++                // Right corner mask
++                Item {
++                    id: rightCornerMaskPart
++                    anchors.left: parent.right
++                    anchors.bottom: parent.bottom
++                    width: root.expandCodecSelector ? Config.roundness + 4 : 0
++                    height: width
++
++                    Behavior on width {
++                        enabled: Config.animDuration > 0
++                        NumberAnimation {
++                            duration: Config.animDuration
++                            easing.type: Easing.OutCubic
++                        }
++                    }
++                    RoundCorner {
++                        anchors.fill: parent
++                        corner: RoundCorner.CornerEnum.BottomLeft
++                        size: Math.max(parent.width, 1)
++                        color: root.expandCodecSelector ? "white" : "transparent"
++                    }
++                }
++                Item {
++                    id: leftCornerMaskPart
++                    anchors.right: parent.left
++                    anchors.bottom: parent.bottom
++                    width: root.expandCodecSelector ? Config.roundness + 4 : 0
++                    height: width
++
++                    Behavior on width {
++                        enabled: Config.animDuration > 0
++                        NumberAnimation {
++                            duration: Config.animDuration
++                            easing.type: Easing.OutCubic
++                        }
++                    }
++                    RoundCorner {
++                        anchors.fill: parent
++                        corner: RoundCorner.CornerEnum.BottomRight
++                        size: Math.max(parent.width, 1)
++                        color: root.expandCodecSelector ? "white" : "transparent"
++                    }
++                }
++            }
++        }
++    }
 +
      ColumnLayout {
          id: contentColumn
@@ -602,7 +866,7 @@ index d35908ed..4bc54f8a 100644
          anchors.topMargin: 8
          spacing: 8
  
-@@ -52,6 +133,8 @@ Item {
+@@ -52,6 +395,8 @@ Item {
          RowLayout {
              Layout.fillWidth: true
              Layout.preferredHeight: 32
@@ -611,7 +875,7 @@ index d35908ed..4bc54f8a 100644
              spacing: 12
  
              // Device icon
-@@ -102,8 +185,13 @@ Item {
+@@ -102,8 +447,13 @@ Item {
                      Layout.fillWidth: true
                      visible: root.device?.connected || root.device?.paired || root.expanded
                      text: {
@@ -623,10 +887,10 @@ index d35908ed..4bc54f8a 100644
 +                        } else if (state == "Disconnecting") {
 +                            status = "Disconnecting";
 +                        } else if (root.device?.connected) {
-                             status = "Connected";
+                             status = I18n.t("bluetooth.connected");
                          } else if (root.device?.paired) {
-                             status = "Paired";
-@@ -112,7 +200,7 @@ Item {
+                             status = I18n.t("bluetooth.paired");
+@@ -112,7 +462,7 @@ Item {
                          }
  
                          if (root.device?.batteryAvailable) {
@@ -635,7 +899,7 @@ index d35908ed..4bc54f8a 100644
                          }
  
                          return status;
-@@ -138,7 +226,7 @@ Item {
+@@ -138,7 +488,7 @@ Item {
  
                  Text {
                      text: {
@@ -644,7 +908,7 @@ index d35908ed..4bc54f8a 100644
                          if (battery > 80)
                              return Icons.batteryFull;
                          if (battery > 60)
-@@ -152,7 +240,7 @@ Item {
+@@ -152,7 +502,7 @@ Item {
                      font.family: Icons.font
                      font.pixelSize: 18
                      color: {
@@ -653,7 +917,7 @@ index d35908ed..4bc54f8a 100644
                          if (battery > 60)
                              return Colors.green;
                          if (battery > 40)
-@@ -168,6 +256,8 @@ Item {
+@@ -168,6 +518,8 @@ Item {
          // Expanded content with action buttons
          RowLayout {
              Layout.fillWidth: true
@@ -662,7 +926,15 @@ index d35908ed..4bc54f8a 100644
              visible: root.expanded
              spacing: 8
              opacity: root.expanded ? 1 : 0
-@@ -208,6 +298,74 @@ Item {
+@@ -186,6 +538,7 @@ Item {
+                 flat: true
+                 implicitWidth: 80
+                 implicitHeight: 32
++                Layout.alignment: Qt.AlignTop
+ 
+                 background: StyledRect {
+                     variant: "error"
+@@ -208,12 +561,72 @@ Item {
                  Layout.fillWidth: true
              }
  
@@ -672,21 +944,11 @@ index d35908ed..4bc54f8a 100644
 +                implicitHeight: 32
 +                flat: true
 +                visible: pipewireID !== null && root.expanded && !isSimple
++                Layout.alignment: Qt.AlignTop
 +
 +                background: StyledRect {
-+                    variant: "internalbg"
++                    variant: root.expandCodecSelector ? "transparent" : "internalbg"
 +                    radius: Styling.radius(4)
-+                    bottomLeftRadius: expandCodecSelector ? 0 : Styling.radius(4)
-+                    bottomRightRadius: expandCodecSelector ? 0 : Styling.radius(4)
-+                    height: expandCodecSelector ? 40 : 32
-+                    clip: true
-+
-+                    Behavior on height {
-+                        enabled: Config.animDuration > 0
-+                        NumberAnimation {
-+                            duration: Config.animDuration / 4
-+                        }
-+                    }
 +                }
 +
 +                contentItem: Text {
@@ -709,6 +971,7 @@ index d35908ed..4bc54f8a 100644
 +                implicitWidth: 32
 +                implicitHeight: 32
 +                visible: !isSimple
++                Layout.alignment: Qt.AlignTop
 +
 +                background: StyledRect {
 +                    variant: root.device?.trusted ? "primary" : "internalbg"
@@ -721,8 +984,8 @@ index d35908ed..4bc54f8a 100644
 +                    color: root.device?.trusted ? Styling.srItem("primary") : Colors.overSurfaceVariant
 +                    font.pixelSize: 20
 +                    font.family: Icons.font
-+                    horizontalAlignment: Text.AlignHCenter
 +                    verticalAlignment: Text.AlignVCenter
++                    horizontalAlignment: Text.AlignHCenter
 +                }
 +
 +                onClicked: {
@@ -737,93 +1000,164 @@ index d35908ed..4bc54f8a 100644
              // Connect/Disconnect button
              Button {
                  id: actionButton
-@@ -238,5 +396,106 @@ Item {
-                 }
+                 flat: true
+                 implicitWidth: 100
+                 implicitHeight: 32
++                Layout.alignment: Qt.AlignTop
+ 
+                 background: StyledRect {
+                     variant: root.device?.connected ? "internalbg" : "primary"
+@@ -239,4 +652,170 @@ Item {
              }
          }
-+        Flickable {
-+            id: codecsFlickable
-+            Layout.preferredHeight: 40
-+            Layout.fillWidth: true
-+            Layout.alignment: Qt.AlignTop
-+            contentWidth: root.availableCodecs.length * 60 + 36 >= 330 ? root.availableCodecs.length * 60 + 36 : 330
-+            contentHeight: root.expanded && root.expandCodecSelector ? 40 : 0
-+            clip: true
-+            interactive: true
-+            visible: root.expanded && root.expandCodecSelector
-+            flickableDirection: Flickable.HorizontalFlick
-+            boundsBehavior: Flickable.OvershootBounds
+     }
 +
-+            Behavior on contentHeight {
-+                enabled: Config.animDuration > 0
-+                NumberAnimation {
-+                    duration: Config.animDuration
-+                    easing.type: Easing.OutCubic
++    Canvas {
++        id: outlineCanvas
++        anchors.fill: parent
++        z: 5000
++        antialiasing: true
++
++        readonly property var borderData: Config.theme.srInternalBg.border
++        readonly property int borderWidth: borderData[1]
++        readonly property color borderColor: Config.resolveColor(borderData[0])
++
++        visible: pipewireID !== null && root.expanded && !isSimple
++
++
++        onPaint: {
++            var ctx = getContext("2d");
++            ctx.clearRect(0, 0, width, height);
++
++            if (borderWidth <= 0)
++                return; // No outline when borderWidth is 0
++
++            ctx.strokeStyle = borderColor;
++            ctx.lineWidth = borderWidth;
++            ctx.lineJoin = "round";
++            ctx.lineCap = "round";
++
++            // Offset to move path inward by half the border width
++            var offset = borderWidth / 2;
++            var offsetX = parent.width-(trustButton.width+actionButton.width+codecButton.width+47);
++            var offsetY = 49;
++
++            // "Corner" radius (the smooth connection to the screen edge)
++            var rCorner = Config.roundness > 0 ? Config.roundness + 4 : 0;
++            var wCenter = (centerMaskPart.width+rCorner*2)/2;
++            ctx.beginPath();
++
++            if (expandCodecSelector) { // Bottom position
++                var tl = centerMaskPart.topLeftRadius;
++                var tr = centerMaskPart.topRightRadius;
++                var yTop = offset+offsetY;
++                var yBottom = centerMaskPart.height - offset+offsetY;
++
++                ctx.moveTo(offset+27, yBottom+offset)
++
++                if (rCorner > 0) {
++                    // Start at bottom-left
++                    ctx.lineTo(offset+offsetX, yBottom+offset);
++                    // Left bottom corner arc (concave)
++                    ctx.arc(offset+offsetX, centerMaskPart.height+offset - rCorner+offsetY, rCorner - offset, Math.PI / 2, 0, true);
++                    // Note: Canvas arc is clockwise by default. To emulate the "RoundCorner" feel (inverted),
++                    // we need to draw it such that it curves from (offset, yBottom) inwards to (rCorner, height-rCorner).
++                    // Actually, let's mirror the top logic:
++                    // Center at (offset, height - rCorner)
++                    // Start angle: PI/2 (90 deg - bottom)
++                    // End angle: 0 (0 deg - right)
++                    // Counter-clockwise (true) to curve "in"
++                } else {
++                    ctx.moveTo(offset+offsetX, yBottom);
++                    ctx.lineTo(rCorner+offsetX, centerMaskPart.height - rCorner+offsetY);
++                }
++
++                // Left vertical line up
++                ctx.lineTo(rCorner+offsetX, yTop + tl);
++
++                // Top left corner
++                if (tl > 0) {
++                    ctx.arcTo(rCorner+offsetX, yTop, rCorner+offsetX + tl, yTop, tl - offset);
++                }
++
++                // Top horizontal line
++                ctx.lineTo(rCorner + wCenter - tr +offsetX, yTop);
++
++                // Top right corner
++                if (tr > 0) {
++                    ctx.arcTo(rCorner + wCenter+offsetX+5, yTop, rCorner + wCenter+offsetX+5, yTop + tr, tr - offset);
++                }
++
++                // Right vertical line down
++                ctx.lineTo(rCorner + wCenter+offsetX+5, centerMaskPart.height - rCorner+offsetY);
++
++                // Right bottom corner arc
++                if (rCorner > 0) {
++                    ctx.arc(rCorner*2 + wCenter - offset+offsetX+5, centerMaskPart.height - rCorner+offsetY, rCorner - offset, Math.PI, Math.PI / 2, true);
++                    
++                    ctx.arc(codecContent.width - offset-10, yBottom+codecContent.height/2, rCorner - offset, (3*Math.PI) / 2, 0, false)
++                    ctx.arc(codecContent.width - offset-10, yBottom+codecContent.height/2, rCorner - offset, 0, Math.PI / 2, false)
++                }
++                if (rCorner > 0) {
++                  ctx.arc(offset+27, yBottom+codecContent.height/2, rCorner - offset, Math.PI / 2, Math.PI, false)
++                  ctx.arc(offset+27, yBottom+codecContent.height/2, rCorner - offset, Math.PI, (3*Math.PI) / 2, false)
 +                }
 +            }
-+            opacity: root.expanded && root.expandCodecSelector ? 1 : 0
-+
-+            Behavior on opacity {
-+                enabled: Config.animDuration * 2 > 0
-+                NumberAnimation {
-+                    duration: Config.animDuration
-+                    easing.type: Easing.OutCubic
-+                }
++            ctx.closePath();
++            ctx.stroke();
++        }
++        Connections {
++            target: Colors
++            function onPrimaryChanged() {
++                outlineCanvas.requestPaint();
 +            }
-+
-+            Item {
-+                anchors.fill: parent
-+                anchors.leftMargin: 12
-+                anchors.rightMargin: 12
-+
-+                StyledRect {
-+                    variant: "internalbg"
-+                    anchors.fill: parent
-+                    radius: Styling.radius(4)
-+                }
-+
-+                RowLayout {
-+                    id: codecRow
-+                    anchors.margins: 4
-+                    anchors.left: parent.left
-+                    anchors.bottom: parent.bottom
-+                    anchors.top: parent.top
-+
-+                    Repeater {
-+                        model: root.availableCodecs
-+                        Button {
-+                            id: codecSelectButton
-+                            required property var modelData
-+                            flat: true
-+                            implicitWidth: 56
-+                            implicitHeight: 32
-+                            Layout.alignment: Qt.AlignVCenter
-+
-+                            background: StyledRect {
-+                                variant: "common"
-+                                radius: Styling.radius(4)
-+                            }
-+
-+                            contentItem: Text {
-+                                text: {
-+                                    return root.codecIndex[modelData]
-+                                }
-+                                elide: Text.ElideLeft
-+                                font.family: Config.theme.font
-+                                font.pixelSize: Styling.fontSize(-1)
-+                                color: Colors.overSurfaceVariant
-+                                horizontalAlignment: Text.AlignHCenter
-+                                verticalAlignment: Text.AlignVCenter
-+                            }
-+
-+                            onClicked: {
-+                              setProfile(modelData)
-+                              expandCodecSelector = false
-+                              activeCodec = modelData
-+                            }
-+                        }
-+                    }
-+                }
++        }
++        Connections {
++            target: Config.theme.srBg
++            function onBorderChanged() {
++                outlineCanvas.requestPaint();
++            }
++        }
++        Connections {
++            target: centerMaskPart
++            function onBottomLeftRadiusChanged() {
++                outlineCanvas.requestPaint();
++            }
++            function onBottomRightRadiusChanged() {
++                outlineCanvas.requestPaint();
++            }
++            function onWidthChanged() {
++                outlineCanvas.requestPaint();
++            }
++            function onHeightChanged() {
++                outlineCanvas.requestPaint();
++            }
++        }
++        Connections {
++            target: root
++            function onWidthChanged() {
++                outlineCanvas.requestPaint();
++            }
++            function onHeightChanged() {
++                outlineCanvas.requestPaint();
++            }
++        }
++        Connections {
++            target: Config
++            function onNotchThemeChanged() {
++                outlineCanvas.requestPaint();
++            }
++        }
++        Connections {
++            target: leftCornerMaskPart
++            function onWidthChanged() {
++                outlineCanvas.requestPaint();
++            }
++        }
++        Connections {
++            target: rightCornerMaskPart
++            function onWidthChanged() {
++                outlineCanvas.requestPaint();
 +            }
 +        }
 +    }
@@ -842,18 +1176,16 @@ index d35908ed..4bc54f8a 100644
 +        if (!isSimple) {
 +          getPipewireDevices()
 +        }
-     }
++    }
  }
 diff --git a/modules/widgets/dashboard/controls/BluetoothPanel.qml b/modules/widgets/dashboard/controls/BluetoothPanel.qml
-index 462f39f6..bd8c807f 100644
+index 8570c939..11d39af7 100644
 --- a/modules/widgets/dashboard/controls/BluetoothPanel.qml
 +++ b/modules/widgets/dashboard/controls/BluetoothPanel.qml
-@@ -7,7 +7,8 @@ import Quickshell
- import Quickshell.Io
+@@ -8,6 +8,7 @@ import Quickshell.Io
  import qs.modules.theme
  import qs.modules.components
--import qs.modules.services
-+//import qs.modules.services
+ import qs.modules.services
 +import Quickshell.Bluetooth
  import qs.config
  
@@ -915,7 +1247,7 @@ index 462f39f6..bd8c807f 100644
              width: deviceList.width
 @@ -57,7 +59,7 @@ Item {
                  anchors.horizontalCenter: parent.horizontalCenter
-                 title: "Bluetooth"
+                 title: I18n.t("settings.bluetooth")
                  showToggle: true
 -                toggleChecked: BluetoothService.enabled
 +                toggleChecked: Bluetooth.defaultAdapter?.enabled ? true : false
@@ -925,7 +1257,7 @@ index 462f39f6..bd8c807f 100644
 @@ -70,19 +72,16 @@ Item {
                      {
                          icon: Icons.sync,
-                         tooltip: "Scan for devices",
+                         tooltip: I18n.t("bluetooth.scan"),
 -                        enabled: BluetoothService.enabled,
 -                        loading: BluetoothService.discovering || BluetoothService.isUpdating,
 +                        enabled: Bluetooth.defaultAdapter?.enabled ? true : false,
@@ -951,14 +1283,14 @@ index 462f39f6..bd8c807f 100644
          Text {
              anchors.centerIn: parent
 -            visible: deviceList.count === 0 && !BluetoothService.discovering
--            text: BluetoothService.enabled ? "No devices found" : "Bluetooth is disabled"
+-            text: BluetoothService.enabled ? I18n.t("bluetooth.no_devices") : I18n.t("bluetooth.disabled")
 +            visible: deviceList.count === 0 && !(Bluetooth.defaultAdapter?.discovering ? true : false)
-+            text: Bluetooth.defaultAdapter?.enabled ? "No devices found" : "Bluetooth is disabled"
++            text: Bluetooth.defaultAdapter?.enabled ? I18n.t("bluetooth.no_devices") : I18n.t("bluetooth.disabled")
              font.family: Config.theme.font
              font.pixelSize: Config.theme.fontSize
              color: Colors.overSurfaceVariant
 diff --git a/modules/widgets/dashboard/widgets/QuickControls.qml b/modules/widgets/dashboard/widgets/QuickControls.qml
-index bc4a6acc..66195ebd 100644
+index daf05a90..5ef9e3ff 100644
 --- a/modules/widgets/dashboard/widgets/QuickControls.qml
 +++ b/modules/widgets/dashboard/widgets/QuickControls.qml
 @@ -5,6 +5,7 @@ import qs.modules.components
@@ -994,10 +1326,10 @@ index bc4a6acc..66195ebd 100644
                      tooltipText: {
 -                        if (!BluetoothService.enabled)
 +                        if (!(Bluetooth.defaultAdapter?.enabled ? true : false))
-                             return "Bluetooth: Off";
+                             return I18n.t("controls.bluetooth_off");
 -                        if (BluetoothService.connected)
--                            return "Bluetooth: Connected";
-                         return "Bluetooth: On";
+-                            return I18n.t("controls.bluetooth_connected");
+                         return I18n.t("controls.bluetooth_on");
                      }
 -                    onClicked: BluetoothService.toggle()
 +                    onClicked: Bluetooth.defaultAdapter.enabled = !Bluetooth.defaultAdapter.enabled
