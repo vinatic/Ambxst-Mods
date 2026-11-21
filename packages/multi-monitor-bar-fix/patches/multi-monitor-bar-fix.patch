@@ -1,16 +1,8 @@
 diff --git a/modules/bar/BarContent.qml b/modules/bar/BarContent.qml
-index 9d43848a..0d207d3a 100644
+index 5ae8d2ea..e94b2dc0 100644
 --- a/modules/bar/BarContent.qml
 +++ b/modules/bar/BarContent.qml
-@@ -4,6 +4,7 @@ import QtQuick.Layouts
- import Quickshell
- import Quickshell.Widgets
- import Quickshell.Wayland
-+import Quickshell.Hyprland
- import qs.modules.bar.workspaces
- import qs.modules.theme
- import qs.modules.bar.clock
-@@ -30,7 +31,7 @@ Item {
+@@ -29,7 +29,7 @@ Item {
  
      // Auto-hide properties
      onPinnedChanged: {
@@ -19,103 +11,29 @@ index 9d43848a..0d207d3a 100644
              Config.bar.pinnedOnStartup = pinned;
          }
      }
-@@ -51,16 +52,37 @@ Item {
-         }
+diff --git a/modules/corners/ScreenCorners.qml b/modules/corners/ScreenCorners.qml
+index 78201282..9805802e 100644
+--- a/modules/corners/ScreenCorners.qml
++++ b/modules/corners/ScreenCorners.qml
+@@ -37,7 +37,7 @@ PanelWindow {
+     color: "transparent"
+     exclusionMode: ExclusionMode.Ignore
+     WlrLayershell.namespace: "ambxst:screenCorners"
+-    WlrLayershell.layer: WlrLayer.Overlay
++    WlrLayershell.layer: GameModeClient.toggled ? WlrLayer.Top : WlrLayer.Overlay // Direct output with WlrLayer.Overlay is incompatible. Better gaming expirience
+     mask: Region {
+         item: null
      }
- 
-+    // Keybind toggle (SUPER+SHIFT+B by default). Unpinning also drops any
-+    // pending hover reveal so the bar hides immediately instead of after
-+    // the mouse-leave delay.
-+    Connections {
-+        target: GlobalStates
-+        function onBarPinToggled() {
-+            root.pinned = !root.pinned;
-+            if (!root.pinned) {
-+                root.hoverActive = false;
-+                root.hideDelayTimer.stop();
-+            }
-+        }
-+    }
-+
-     // Monitor reference and reference to toplevels on monitor
-     readonly property var compositorMonitor: AxctlService.monitorFor(screen)
--    readonly property var toplevels: (!compositorMonitor || !compositorMonitor.activeWorkspace || !AxctlService.clients.values) ? [] : AxctlService.clients.values.filter(c => c.workspace.id === compositorMonitor.activeWorkspace.id)
-+    readonly property var hyprlandMonitor: Hyprland.monitorFor(screen)
-+    readonly property var toplevels: hyprlandMonitor.activeWorkspace?.toplevels.values ?? []
- 
--    // Fullscreen detection - use ToplevelManager (native Wayland) for reliable detection
-+    // Fullscreen detection - check if a toplevel is fullscreen on this screen
-     readonly property bool activeWindowFullscreen: {
--        const toplevel = ToplevelManager.activeToplevel;
--        if (!toplevel || !toplevel.activated)
--            return false;
--        return toplevel.fullscreen === true;
-+        if (!hyprlandMonitor || !toplevels) return false;
-+
-+        // Check all toplevels on active workspcace
-+        for (var i = 0; i < toplevels.length; i++) {
-+            // Checks first if the wayland handle is ready
-+            if (toplevels[i].wayland && toplevels[i].wayland.fullscreen == true) {
-+               return true;
-+            }
-+        }
-+        return false;
-     }
- 
- 
 diff --git a/modules/shell/UnifiedShellPanel.qml b/modules/shell/UnifiedShellPanel.qml
-index 028c2dce..465dcdc1 100644
+index 786c98e6..7e6682f7 100644
 --- a/modules/shell/UnifiedShellPanel.qml
 +++ b/modules/shell/UnifiedShellPanel.qml
-@@ -2,6 +2,7 @@ import QtQuick
- import QtQuick.Effects
- import Quickshell
- import Quickshell.Wayland
-+import Quickshell.Hyprland
- import qs.modules.bar
- import qs.modules.bar.workspaces
- import qs.modules.notch
-@@ -40,7 +41,7 @@ PanelWindow {
+@@ -40,7 +40,7 @@ PanelWindow {
          return WlrKeyboardFocus.None;
      }
      WlrLayershell.namespace: "ambxst"
 -    WlrLayershell.layer: WlrLayer.Overlay
-+    WlrLayershell.layer: WlrLayer.Top // Monitor cannot use direct_scanout = 1 if value is Wlr.Overlay, bad for gaming.
++    WlrLayershell.layer: GameModeClient.toggled ? WlrLayer.Top : WlrLayer.Overlay // Direct output with WlrLayer.Overlay is incompatible. Better gaming expirience
      exclusionMode: ExclusionMode.Ignore
  
      // Whether we need to capture full-screen input for click-outside detection.
-@@ -89,24 +90,17 @@ PanelWindow {
-     readonly property bool unifiedEffectActive: false // Flag to notify children to disable internal borders
- 
-     readonly property var compositorMonitor: AxctlService.monitorFor(targetScreen)
-+    readonly property var hyprlandMonitor: Hyprland.monitorFor(targetScreen)
-+    readonly property var toplevels: hyprlandMonitor.activeWorkspace?.toplevels.values ?? []
-     readonly property bool hasFullscreenWindow: {
--        if (!compositorMonitor)
--            return false;
--
--        const activeWorkspaceId = compositorMonitor.activeWorkspace.id;
--        const monId = compositorMonitor.id;
--
--        // Check active toplevel first (fast path)
--        const toplevel = ToplevelManager.activeToplevel;
--        if (toplevel && toplevel.fullscreen && AxctlService.focusedMonitor.id === monId) {
--            return true;
--        }
--
--        // Check all windows on this monitor (robust path)
--        const wins = CompositorData.windowList;
--        for (let i = 0; i < wins.length; i++) {
--            if (wins[i].monitor === monId && wins[i].fullscreen && wins[i].workspace.id === activeWorkspaceId) {
--                return true;
-+        //if (!compositorMonitor)
-+        //    return false;
-+
-+        if (!hyprlandMonitor || !toplevels) return false;
-+        for (var i = 0; i < toplevels.length; i++) {
-+            // Checks first if the wayland handle is ready
-+            if (toplevels[i].wayland && toplevels[i].wayland.fullscreen == true) {
-+               return true;
-             }
-         }
-         return false;
