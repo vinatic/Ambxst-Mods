@@ -1,5 +1,5 @@
 diff --git a/modules/widgets/defaultview/CompactPlayer.qml b/modules/widgets/defaultview/CompactPlayer.qml
-index 265b87e8..93b25ef1 100644
+index f4255e66..b2a7154d 100644
 --- a/modules/widgets/defaultview/CompactPlayer.qml
 +++ b/modules/widgets/defaultview/CompactPlayer.qml
 @@ -80,10 +80,11 @@ Item {
@@ -7,11 +7,11 @@ index 265b87e8..93b25ef1 100644
  
      readonly property string displayedTitle: {
 -        if (player) {
--            return (player.trackArtist ? player.trackArtist + " - " : "") + (player.trackTitle || "Unknown");
+-            return (player.trackArtist ? player.trackArtist + " - " : "") + (player.trackTitle || I18n.t("player.unknown"));
 -        }
 -        return focusedTitle || noMediaText;
 +        //if (player) {
-+        //    return (player.trackArtist ? player.trackArtist + " - " : "") + (player.trackTitle || "Unknown");
++        //    return (player.trackArtist ? player.trackArtist + " - " : "") + (player.trackTitle || I18n.t("player.unknown"));
 +        //}
 +        return NightscoutService.widgetText
 +        //return focusedTitle || noMediaText;

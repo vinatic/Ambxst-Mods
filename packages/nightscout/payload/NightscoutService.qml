@@ -14,50 +14,25 @@ Singleton {
     property string widgetText: ""
     property bool connectionError: false
 
-    property int utcOffset: 1 * 60 * 60 * 1000 // +1 hour UTC
-    property string mmol: "mmol/L"
+    property string cgmUnit: "mmol/L"
+    property bool hideUnit: false
     property bool warnOldCgmValue: true
     property int oldValueTimer: 20
 
     property var nightscoutData: null
-    property string entriesCount: "100"
-
-    property int refCount: 0
+    property string entriesCount: "5"
 
     property int updateInterval: 60000 // 1 minute
-    property int retryAttempts: 0
-    property int maxRetryAttempts: 3
-    property int retryDelay: 3000
-    property int lastFetchTime: 0
-    property int minFetchInterval: 3000
-    property int persistentRetryCount: 0
 
     function handleNightscoutSuccess() {
         connectionError = false
         cgmTextMaker()
-        root.retryAttempts = 0
-        root.persistentRetryCount = 0
-        if (persistentRetryTimer.running) {
-            persistentRetryTimer.stop()
-        }
-        if (updateTimer.interval !== root.updateInterval) {
-            updateTimer.interval = root.updateInterval
-        }
     }
 
     function handleNightscoutFailure() {
-        root.retryAttempts++
-        if (root.retryAttempts < root.maxRetryAttempts) {
-            retryTimer.start()
-          } else {
-            console.log("Nightscout Connection:", connectionError)
-            connectionError = true
-            cgmTextMaker()
-            const backoffDelay = Math.min(60000 * Math.pow(2, persistentRetryCount), 300000)
-            persistentRetryCount++
-            persistentRetryTimer.interval = backoffDelay
-            persistentRetryTimer.start()
-        }
+        console.log("Nightscout Connection:", connectionError)
+        connectionError = true
+        cgmTextMaker()
     }
 
     function getNightscoutApiUrl() {
@@ -68,12 +43,11 @@ Singleton {
       if (root.apikey != "") {
         keyString = '&token='+root.apikey
       }
-      return root.nightscoutURL + 'api/v1/entries.json?find%5Bdate%5D%5B\$gt%5D=1763753031984&count=5'+keyString
+      return root.nightscoutURL + 'api/v1/entries.json?find%5Bdate%5D%5B\$gt%5D=1763753031984&count='+entriesCount+''+keyString
     }
 
     function forceRestart() {
         nightscoutFetcher.running = false
-        lastFetchTime = 0
         fetchNightscout()
     }
 
@@ -82,64 +56,60 @@ Singleton {
             return
         }
 
-        const now = Date.now()
-        if (now - root.lastFetchTime < root.minFetchInterval) {
-            return
-        }
-
         const apiUrl = getNightscoutApiUrl()
         if (!apiUrl) {
             return
         }
 
-        root.lastFetchTime = now
         nightscoutFetcher.command = ['curl', apiUrl]
         nightscoutFetcher.running = true
     }
 
-    function formatSgv(sgv) {
-        return (Math.round((sgv / 18.0) * 10) / 10).toFixed(1)
+    function formatCgm(cgm, unit) {
+        if (unit === "mmol/L") {
+          return (Math.round((cgm / 18.018) * 10) / 10).toFixed(1)
+        } else if (unit === "mmol/mol") {
+          return Math.round(0.3808 * cgm - 5.716)
+        } else if (unit === "HbA1c") {
+          return ((cgm + 46.7) / 28.7).toFixed(1)
+        }
     }
 
     function dirSymbol(dir) {
       if (dir == "Flat") {
-        return "→ "
+        return " → "
       } else if (dir == "SingleUp") {
-        return "↑ "
+        return " ↑ "
       } else if (dir == "SingleDown") {
-        return "↓ "
+        return " ↓ "
       } else if (dir == "FortyFiveUp") {
-        return "↗ "
+        return " ↗ "
       } else if (dir == "FortyFiveDown") {
-        return "↘ "
+        return " ↘ "
       } else if (dir == "DoubleUp") {
-        return "↑↑"
+        return " ↑↑"
       } else if (dir == "DoubleDown") {
-        return "↓↓"
+        return " ↓↓"
       } else if (dir == "NONE") {
-        return "⇼ "
+        return " ⇼ "
       } else if (dir == "NOT COMPUTABLE") {
-        return "- "
+        return " - "
       } else if (dir == "RATE OUT OF RANGE") {
-        return "⇕ "
+        return " ⇕ "
       } else {
-        return "? "
+        return " ? "
       }
     }
 
     function cgmTextMaker() {
       if (connectionError) {
-        widgetText = "Connection Error"
+        widgetText = I18n.t("Connection Error")
       } else if (nightscoutData === null || nightscoutData.length === 0) {
-        widgetText = "No data Error"
+        widgetText = I18n.t("No data Error")
       } else if (nightscoutData[0].date + oldValueTimer * 60 * 1000 - Date.now() < 0 && warnOldCgmValue) { //older than 20 min
-        widgetText = "Old value"
-      } else if (mmol == "mmol/L") {
-        widgetText = nightscoutData[0].sgv_mmol + "mmol/L " + dirSymbol(nightscoutData[0].direction)
-      } else if (mmol == "mg/dL") {
-        widgetText = nightscoutData[0].sgv_mg + "mg/dL " + dirSymbol(nightscoutData[0].direction)
+        widgetText = I18n.t("Old value")
       } else {
-        widgetText = "new error"
+        widgetText = nightscoutData[0][cgmUnit] + (hideUnit && cgmUnit !== "%" ? "" : cgmUnit) + dirSymbol(nightscoutData[0].direction)
       }
     }
 
@@ -166,8 +136,10 @@ Singleton {
                             //   root.maxMg = Math.max(root.maxMg, data[i].sgv)
                             // }
                             cgm_list.push({
-                                "sgv_mg": data[i].sgv,
-                                "sgv_mmol": formatSgv(data[i].sgv),
+                                "mg/dL": data[i].sgv,
+                                "mmol/L": formatCgm(data[i].sgv, "mmol/L"),
+                                "mmol/mol": formatCgm(data[i].sgv, "mmol/mol"),
+                                "%": formatCgm(data[i].sgv, "HbA1c"),
                                 "date": data[i].date,
                                 "dateString": data[i].dateString,
                                 "direction": data[i].direction
@@ -194,28 +166,8 @@ Singleton {
     Timer {
         id: updateTimer
         interval: root.updateInterval
-        running: root.refCount > 0
+        running: false
         repeat: true
-        onTriggered: {
-            root.fetchNightscout()
-        }
-    }
-
-    Timer {
-        id: retryTimer
-        interval: root.retryDelay
-        running: false
-        repeat: false
-        onTriggered: {
-            root.fetchNightscout()
-        }
-    }
-
-    Timer {
-        id: persistentRetryTimer
-        interval: 60000
-        running: false
-        repeat: false
         onTriggered: {
             root.fetchNightscout()
         }
@@ -230,12 +182,11 @@ Singleton {
         if (key === "warnOldCgmValue") {
             warnOldCgmValue = value
             cgmTextMaker()
-        } else if (key === "mmol") {
-            if (value) {
-                mmol = "mmol/L"
-            } else {
-                mmol = "mg/dL"
-            }
+        } else if (key === "unit") {
+            cgmUnit = value
+            cgmTextMaker()
+        } else if (key === "hideUnit") {
+            hideUnit = value
             cgmTextMaker()
         } else if (key === "oldValueTimer") {
             oldValueTimer = value
@@ -248,11 +199,8 @@ Singleton {
     function applySettings(values) {
         nightscoutURL = values["nightscoutURL"].trim()
         apikey = values["apikey"].trim()
-        if (values["mmol"]) {
-            mmol = "mmol/L"
-        } else {
-            mmol = "mg/dL"
-        }
+        cgmUnit = values["unit"]
+        hideUnit = values["hideUnit"]
         warnOldCgmValue = values["warnOldCgmValue"]
         oldValueTimer = values["oldValueTimer"]
         fetchNightscout()
