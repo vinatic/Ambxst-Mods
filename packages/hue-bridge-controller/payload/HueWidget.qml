@@ -41,8 +41,12 @@ StyledRect {
         }
     }
 
+    onVisibleChanged: {
+        HueService.getGroupsHelper()
+        HueService.getLightsHelper()
+    }
+
     Component.onCompleted: {
         HueService.initialize()
     }
-
 }
