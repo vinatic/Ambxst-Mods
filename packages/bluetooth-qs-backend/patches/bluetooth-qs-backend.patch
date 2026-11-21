@@ -479,7 +479,7 @@ index de25678a..00000000
 -    }
 -}
 diff --git a/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml b/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
-index 42b51be6..adaac420 100644
+index 42b51be6..1e2f000d 100644
 --- a/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
 +++ b/modules/widgets/dashboard/controls/BluetoothDeviceItem.qml
 @@ -1,21 +1,39 @@
@@ -504,14 +504,14 @@ index 42b51be6..adaac420 100644
  
      required property BluetoothDevice device
  
-+    property bool connected: device.connected
++    property bool connected: device?.connected
 +    property bool isSimple: width < 325
 +
      property bool expanded: false
 +    property bool expandCodecSelector: false
 +    property var availableCodecs: []
 +    property int activeCodec: 0
-+    property var codecIndex: { 0:"Off",131076:"ACC", 131074:"SBC_QX", 131073:"SBC", 131080:"LDAC",131078:"aptX", 131079:"aptX HD", 131081:"aptx LL", 196864:"CVSD", 196865:"MSBC"}
++    property var codecIndex: { 0:"Off",131076:"ACC", 131074:"SBC_QX", 131073:"SBC", 131080:"LDAC",131078:"aptX", 131079:"aptX HD", 131081:"aptx LL", 196864:"CVSD", 196865:"MSBC", 196866:"LC3-SWB", 196867:"LC3-24.."}
 +    property var pipewireID: null
  
 -    implicitHeight: contentColumn.implicitHeight + 16  // 8px margins top + bottom
@@ -879,7 +879,7 @@ index 42b51be6..adaac420 100644
                      Layout.fillWidth: true
                      visible: root.device?.connected || root.device?.paired || root.expanded
                      text: {
-+                        let state = BluetoothDeviceState.toString(root.device.state)
++                        let state = BluetoothDeviceState.toString(root.device?.state)
                          let status = "";
 -                        if (root.device?.connected) {
 +                        if (state == "Connecting") {
@@ -1179,7 +1179,7 @@ index 42b51be6..adaac420 100644
 +    }
  }
 diff --git a/modules/widgets/dashboard/controls/BluetoothPanel.qml b/modules/widgets/dashboard/controls/BluetoothPanel.qml
-index 8570c939..11d39af7 100644
+index 8570c939..87248b5c 100644
 --- a/modules/widgets/dashboard/controls/BluetoothPanel.qml
 +++ b/modules/widgets/dashboard/controls/BluetoothPanel.qml
 @@ -8,6 +8,7 @@ import Quickshell.Io
@@ -1222,7 +1222,7 @@ index 8570c939..11d39af7 100644
  
 -        model: BluetoothService.friendlyDeviceList
 +        model: {
-+          if (!(Bluetooth.defaultAdapter?.enabled ? true : false)) return [];
++          if (!(Bluetooth.defaultAdapter?.enabled)) return [];
 +          var bluetoothDevices = Bluetooth.devices.values
 +          var filteredDevices = []
 +          for (var i = 0; i < Bluetooth.devices.values.length; i++) {
@@ -1250,7 +1250,7 @@ index 8570c939..11d39af7 100644
                  title: I18n.t("settings.bluetooth")
                  showToggle: true
 -                toggleChecked: BluetoothService.enabled
-+                toggleChecked: Bluetooth.defaultAdapter?.enabled ? true : false
++                toggleChecked: Bluetooth.defaultAdapter?.enabled
  
                  actions: [
                      {
@@ -1260,11 +1260,11 @@ index 8570c939..11d39af7 100644
                          tooltip: I18n.t("bluetooth.scan"),
 -                        enabled: BluetoothService.enabled,
 -                        loading: BluetoothService.discovering || BluetoothService.isUpdating,
-+                        enabled: Bluetooth.defaultAdapter?.enabled ? true : false,
-+                        loading: Bluetooth.defaultAdapter?.discovering ? true : false,
++                        enabled: Bluetooth.defaultAdapter?.enabled,
++                        loading: Bluetooth.defaultAdapter?.discovering,
                          onClicked: function () {
 -                            BluetoothService.startDiscovery();
-+                            Bluetooth.defaultAdapter.discovering = !Bluetooth.defaultAdapter.discovering;
++                            Bluetooth.defaultAdapter.discovering = !Bluetooth.defaultAdapter.discovering
                          }
                      }
                  ]
@@ -1278,17 +1278,47 @@ index 8570c939..11d39af7 100644
                  }
              }
          }
-@@ -103,8 +102,8 @@ Item {
+@@ -103,11 +102,25 @@ Item {
          // Empty state
          Text {
              anchors.centerIn: parent
 -            visible: deviceList.count === 0 && !BluetoothService.discovering
 -            text: BluetoothService.enabled ? I18n.t("bluetooth.no_devices") : I18n.t("bluetooth.disabled")
-+            visible: deviceList.count === 0 && !(Bluetooth.defaultAdapter?.discovering ? true : false)
++            visible: deviceList.count === 0 && !(Bluetooth.defaultAdapter?.discovering)
 +            text: Bluetooth.defaultAdapter?.enabled ? I18n.t("bluetooth.no_devices") : I18n.t("bluetooth.disabled")
              font.family: Config.theme.font
              font.pixelSize: Config.theme.fontSize
              color: Colors.overSurfaceVariant
+         }
+     }
++
++    Timer {
++        id: discoverTimer
++        interval: 60000 * 3; // Max discover Time of 3min
++        running: false;
++        repeat: false;
++        onTriggered: {
++          Bluetooth.defaultAdapter.discovering = false;
++        }
++    }
++
++    function toggleDiscover() {
++        Bluetooth.defaultAdapter.discovering = !Bluetooth.defaultAdapter.discovering
++    }
+ }
+diff --git a/modules/widgets/dashboard/controls/PanelTitlebar.qml b/modules/widgets/dashboard/controls/PanelTitlebar.qml
+index 1113019a..38bbbbfb 100644
+--- a/modules/widgets/dashboard/controls/PanelTitlebar.qml
++++ b/modules/widgets/dashboard/controls/PanelTitlebar.qml
+@@ -71,7 +71,7 @@ RowLayout {
+             flat: true
+             implicitWidth: 28
+             implicitHeight: 28
+-            enabled: (modelData.enabled !== undefined ? modelData.enabled : true) && !(modelData.loading ?? false)
++            enabled: (modelData.enabled !== undefined ? modelData.enabled : true)
+ 
+             property bool isLoading: modelData.loading ?? false
+ 
 diff --git a/modules/widgets/dashboard/widgets/QuickControls.qml b/modules/widgets/dashboard/widgets/QuickControls.qml
 index daf05a90..5ef9e3ff 100644
 --- a/modules/widgets/dashboard/widgets/QuickControls.qml
